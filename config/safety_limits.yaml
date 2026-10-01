@@ -1,0 +1,6 @@
+# Safety limits — hard ceilings independent of any experiment config.
+# These values may only be LOWERED by an experiment config, never raised.
+# See rules.md §2.
+max_attempts: 1000
+max_duration_seconds: 30
+max_concurrency: 1
