@@ -419,3 +419,79 @@ algorithm is not observed negotiation, wall-clock duration is not CPU-seconds.
 
 **Status:** Phase 4 methodology locked. Implementation tasks remain pending.
 Next unchecked task: Phase 4 — Wire up instrumentation per `design.md` §3.
+
+### P4-002 — F-01..F-04 remediation implemented and verified (2026-10-01)
+Follows the Phase 4 forensic review (findings F-01, F-02, F-03, F-04 — all
+CRITICAL). Remediation scope was strictly F-01..F-04; F-05 onward were NOT
+addressed.
+
+**F-01 (TLS provenance):** removed the `CONFIG_EXPECTED_GROUP` /
+`CONFIG_EXPECTED_SIGNATURE` configuration→observation fabrication. The
+negotiated fields now come ONLY from a supplied observation
+(`NegotiationObservation`); `normalize_tls_event()` no longer accepts a
+configuration and never consults one. Added
+`parse_openssl_handshake_observation()` for a genuine OpenSSL transcript
+(verified against OpenSSL 3.5.5: full form `Negotiated TLS1.3 group:` /
+`Peer signature type:`; brief form `Peer Temp Key:` / `Signature type:`).
+Evidence sources are `openssl_handshake_transcript` or
+`client_handshake_outcome`; unobserved fields are `null`.
+
+**F-02 (W1 controlled abort):** W1 no longer performs a completed handshake.
+`_attempt_controlled_abort()` drives the stdlib SSL state machine with
+`do_handshake_on_connect=False` on a non-blocking socket: the first step
+emits the ClientHello and signals WantRead, then the client closes BEFORE
+completion. If the handshake unexpectedly completes it raises, so a
+completed handshake is reported as `error`, never `aborted_pre_finished`.
+
+**F-03 (packet capture):** replaced the blocking, non-terminating
+`capture_packets_container()` with `start_packet_capture()` /
+`stop_packet_capture()`. tcpdump is started as a background process (`-U`),
+confirmed alive, then stopped EXPLICITLY with SIGINT; the timeout is only an
+emergency backstop. Copy → parse → cleanup runs on success and failure; a
+failed capture returns success=False (treated as unavailable, never zero).
+
+**F-04 (controller integration):** `run_experiment()` now starts CPU
+sampling and packet capture after readiness and before the workload, stops
+both after the workload, collects/normalizes TLS events, and builds the
+result with required fields: `server_cpu_seconds`,
+`server_cpu_seconds_per_attempt`, `bytes_received`, `bytes_sent`,
+`bytes_received_per_attempt`, `bytes_sent_per_attempt`, `tls_events`.
+Per-attempt denominators use ALL bounded `attempts` (zero-safe). Fabricated
+constants removed (`bytes_*` and `workload_client_cpu_seconds` are now
+`null` when unmeasured). Added `measurement_status` / `measurement_errors`
+so partial measurement stays visible.
+
+**Unavoidable dependency:** implementing CPU as "start before / stop after
+the workload" required a non-blocking pidstat session
+(`start_cpu_sampling`/`stop_cpu_sampling`) — the core of F-06 — so the
+blocking `sample_cpu_container()` was replaced. F-05 (`find_server_pid`
+ambiguity) was NOT fixed, so in-container CPU sampling is expected to report
+"unavailable" until F-05 is addressed.
+
+**Also fixed (import cycle):** importing the workload at module level in
+`experiment.py` created a circular import
+(`workload.client → controller.safety → controller/__init__ →
+controller.experiment → workload.client`); the workload and legitimate
+client are now imported lazily inside `run_experiment()`.
+
+**Verification evidence:**
+- 87 tests pass (63 pre-existing + 24 new in `tests/test_f01..f04`).
+- Runtime (host-local `openssl s_server`, OpenSSL 3.5.5, 127.0.0.1):
+  W0 = 5/5 `completed`; W1 = 5/5 `aborted_pre_finished`; the server logged
+  abnormal terminations (`unexpected eof while reading`, `SSL_accept:error`),
+  confirming the W1 handshakes did not complete normally from the server.
+- Genuine observation parsed from `s_client`: group `X25519`, signature
+  `ecdsa_secp256r1_sha256`, source `openssl_handshake_transcript`.
+- Controller end-to-end (compose_file=None): result carries all required
+  fields; `server_cpu_seconds`/`bytes_*` are `null` with
+  `measurement_status` unavailable (never 0); `tls_events` negotiated fields
+  are `null` (no fabricated config values).
+
+**Remaining blockers (out of scope):** F-05 (PID ambiguity prevents
+in-container CPU sampling); container-based CPU/packet streams not
+runtime-verified here because the Docker daemon was unavailable during
+remediation; `design.md` §2 result schema not yet synced with the extended
+fields (owner decision).
+
+**Status:** F-01..F-04 remediated and verified at unit + host-runtime level.
+Next: Phase 4 verification gate (to include container runtime).

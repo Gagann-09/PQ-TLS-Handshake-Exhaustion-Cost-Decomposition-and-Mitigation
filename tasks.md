@@ -59,8 +59,16 @@ decision in `memory.md`.
       **Methodology locked 2026-10-01** — CPU via `pidstat` inside
       container, bytes via IP-packet capture, TLS events with nullable
       negotiated fields. Implementation still pending.
+      **Remediation 2026-10-01 (memory.md P4-002)** — F-01..F-04 implemented:
+      TLS provenance no longer config-derived; W1 genuinely aborts
+      pre-Finished; tcpdump has an explicit start/stop lifecycle; controller
+      integrates the three streams with a null-not-zero result schema.
+      Unit-verified (87 tests) and host-runtime verified (C0 W0/W1). Container
+      (CPU/pidstat + tcpdump) runtime verification still pending.
 - [ ] Confirm the result-record schema (`design.md` §2) is produced
       correctly for one full run of each configuration.
+      **Partial 2026-10-01** — schema produced and inspected for C0 W0 and W1
+      (host runtime). C1–C4 runs and `design.md` §2 sync still pending.
 
 ## Phase 5 — RQ1/RQ2 Decomposition (Week 4)
 - [ ] Run the full `{C0..C4} × {W0,W1}` matrix, ≥3 trials each.

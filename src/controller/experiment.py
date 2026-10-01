@@ -14,6 +14,9 @@ from pathlib import Path
 
 from .config import ExperimentConfig, load_config
 from .safety import SafetyError, validate_config
+from src.instrumentation import cpu as cpu_instr
+from src.instrumentation import packets as pkt_instr
+from src.instrumentation import tls_log
 
 
 def _get_openssl_version() -> str:
@@ -138,6 +141,36 @@ def _measure_server_cpu_during_run(container_name: str, duration: float) -> floa
     return (cpu_delta / 100.0) * duration
 
 
+def _resolve_container_id(
+    compose_file: str | Path,
+    service: str = "tls-server",
+) -> str | None:
+    """Resolve the running container ID for a compose service, or None."""
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "-f", str(compose_file), "ps", "-q", service],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        ids = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        return ids[0] if ids else None
+    except Exception:
+        return None
+
+
+def _per_attempt(value: float | int | None, attempts: int) -> float | None:
+    """Normalize a raw measurement by ALL bounded attempts.
+
+    Returns None when the measurement is unavailable or there were no
+    attempts — a missing measurement never becomes a numeric zero.
+    """
+    if value is None or attempts <= 0:
+        return None
+    return round(value / attempts, 6)
+
+
 def run_experiment(
     config: ExperimentConfig,
     results_dir: str | Path,
@@ -145,8 +178,9 @@ def run_experiment(
 ) -> dict:
     """Run a single bounded experiment.
 
-    Validates safety, runs the workload, collects metrics, writes a result record.
-    Returns the result record as a dict.
+    Validates safety, runs the workload, collects CPU / packet / TLS
+    measurements, writes a result record, and returns it. An instrument stream
+    that fails is recorded as unavailable/failed — never as a measured zero.
     """
     # Validate before any network activity — fail closed.
     validate_config(
@@ -161,25 +195,49 @@ def run_experiment(
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
-    # Start the lab if compose file is provided
+    container_id: str | None = None
+    # Start the lab if a compose file is provided, then resolve its container.
     if compose_file:
         _start_lab(compose_file)
-        # Wait for server to be ready
         if not _wait_for_server("127.0.0.1", config.target_port):
             _stop_lab(compose_file)
             raise RuntimeError("TLS server did not start within timeout")
+        container_id = _resolve_container_id(compose_file)
+
+    cpu_session = None
+    capture_session = None
+    cpu_stopped = False
+    capture_stopped = False
+
+    cpu_seconds: float | None = None
+    cpu_status = "unavailable"
+    cpu_error: str | None = None
+    bytes_received: int | None = None
+    bytes_sent: int | None = None
+    pkt_status = "unavailable"
+    pkt_error: str | None = None
+
+    attempts = 0
+    handshake_outcomes = {"aborted_pre_finished": 0, "completed": 0, "error": 0}
+    last_error = None
+    attempt_records: list[dict] = []
 
     try:
+        # Instrumentation starts after readiness and before the workload.
+        if container_id:
+            cpu_session = cpu_instr.start_cpu_sampling(container_id)
+            capture_session = pkt_instr.start_packet_capture(
+                container_id, port=config.target_port
+            )
+        else:
+            cpu_error = cpu_error or "no measurement container"
+            pkt_error = pkt_error or "no measurement container"
+
         start_time = time.monotonic()
 
-        # Run the workload
+        # Run the bounded workload. (Lazy import avoids a controller/workload
+        # import cycle.)
         from src.workload.client import generate_attempts
-
-        attempts = 0
-        handshake_outcomes = {"aborted_pre_finished": 0, "completed": 0, "error": 0}
-        bytes_received = 0
-        bytes_sent = 0
-        last_error = None
 
         for attempt in generate_attempts(
             host=config.target_host,
@@ -196,25 +254,65 @@ def run_experiment(
             else:
                 handshake_outcomes["error"] += 1
                 last_error = attempt.error
+            # No per-attempt negotiation observation is available from the
+            # client, so negotiated fields stay null — never a configured value.
+            attempt_records.append({"outcome": attempt.outcome, "observation": None})
 
         duration = time.monotonic() - start_time
 
-        # Server CPU measurement requires Phase 4 instrumentation (perf/pidstat).
-        # Record as TBD until Phase 4 is implemented.
-        server_cpu_seconds = None  # TBD — Phase 4 instrumentation
+        # Stop CPU sampling — the workload window has ended.
+        if cpu_session is not None:
+            cpu_stopped = True
+            cpu_result = cpu_instr.stop_cpu_sampling(cpu_session)
+            if cpu_result is not None:
+                cpu_seconds = cpu_result.cpu_seconds
+                cpu_status = "measured"
+            else:
+                cpu_status = "failed" if cpu_session.error else "unavailable"
+                cpu_error = cpu_session.error
 
-        # Run legitimate client
+        # Stop packet capture — the workload window has ended.
+        if capture_session is not None:
+            capture_stopped = True
+            capture = pkt_instr.stop_packet_capture(capture_session)
+            if capture.success:
+                bytes_received = capture.meta.bytes_received
+                bytes_sent = capture.meta.bytes_sent
+                pkt_status = "measured"
+            else:
+                pkt_status = "failed"
+                pkt_error = capture.error
+
+        # Collect and normalize TLS observations (outcomes only; no fabricated
+        # negotiated values are available from the client).
+        tls_result = tls_log.observe_tls_events(attempt_records)
+        tls_events = [
+            {
+                "negotiated_group": event.negotiated_group,
+                "negotiated_signature_algorithm": event.negotiated_signature_algorithm,
+                "outcome": event.outcome,
+                "evidence_source": event.evidence_source,
+            }
+            for event in tls_result.events
+        ]
+        tls_status = "observed" if tls_result.events else "unavailable"
+
+        # Run legitimate client (outside the capture window).
         from src.legitimate_client.client import run_legitimate_client
 
         legit_stats = run_legitimate_client(
             host=config.target_host,
             port=config.target_port,
             rate_per_sec=config.legitimate_rate_per_sec,
-            duration_seconds=min(int(duration), config.max_duration_seconds),
+            duration_seconds=min(max(int(duration), 1), config.max_duration_seconds),
         )
 
     finally:
-        # Always stop the lab
+        # Ensure instruments are stopped and the lab torn down on any path.
+        if cpu_session is not None and cpu_session.started and not cpu_stopped:
+            cpu_instr.stop_cpu_sampling(cpu_session)
+        if capture_session is not None and capture_session.started and not capture_stopped:
+            pkt_instr.stop_packet_capture(capture_session)
         if compose_file:
             _stop_lab(compose_file)
 
@@ -226,11 +324,24 @@ def run_experiment(
         "key_reuse": config.key_reuse,
         "attempts": attempts,
         "duration_seconds": round(duration, 3),
-        "server_cpu_seconds": round(server_cpu_seconds, 3) if server_cpu_seconds is not None else "TBD",
-        "workload_client_cpu_seconds": 0.0,  # TBD — Phase 4 instrumentation
+        "server_cpu_seconds": round(cpu_seconds, 6) if cpu_seconds is not None else None,
+        "server_cpu_seconds_per_attempt": _per_attempt(cpu_seconds, attempts),
+        "workload_client_cpu_seconds": None,
         "bytes_received": bytes_received,
         "bytes_sent": bytes_sent,
+        "bytes_received_per_attempt": _per_attempt(bytes_received, attempts),
+        "bytes_sent_per_attempt": _per_attempt(bytes_sent, attempts),
         "handshake_outcomes": handshake_outcomes,
+        "tls_events": tls_events,
+        "measurement_status": {
+            "server_cpu": cpu_status,
+            "packets": pkt_status,
+            "tls_events": tls_status,
+        },
+        "measurement_errors": {
+            "server_cpu": cpu_error,
+            "packets": pkt_error,
+        },
         "last_error": last_error,
         "legitimate": {
             "attempts": legit_stats.attempts,
