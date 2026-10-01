@@ -56,6 +56,9 @@ decision in `memory.md`.
 
 ## Phase 4 — Instrumentation (Week 3)
 - [ ] Wire up `perf`/`pidstat`/`tcpdump`/TLS logging per `design.md` §3.
+      **Methodology locked 2026-10-01** — CPU via `pidstat` inside
+      container, bytes via IP-packet capture, TLS events with nullable
+      negotiated fields. Implementation still pending.
 - [ ] Confirm the result-record schema (`design.md` §2) is produced
       correctly for one full run of each configuration.
 

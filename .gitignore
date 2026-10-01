@@ -38,3 +38,10 @@ results/figures/*
 # Temporary files
 *.tmp
 *.log
+
+# Instrumentation artifacts
+*.pcap
+*.pcapng
+*.keylog
+perf.data*
+*.pidstat

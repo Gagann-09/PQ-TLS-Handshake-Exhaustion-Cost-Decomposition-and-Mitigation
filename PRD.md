@@ -91,6 +91,42 @@ success rate, legitimate-client p50/p95 latency, retransmissions.
 **Derived:** attacker CPU-seconds ÷ server CPU-seconds (cost ratio);
 legitimate-client goodput under load.
 
+### 8.1 Measurement Definitions (locked 2026-10-01)
+
+**CPU metric:** Server CPU-seconds consumed by the `openssl s_server`
+process during the workload execution window, measured via `pidstat` inside
+the TLS-server container at 1 Hz. Normalized by total handshake attempts
+(including completed, aborted, and failed). Host-side `psutil` is NOT an
+experimental fallback. Docker cumulative stats are NOT the primary CPU
+measurement. `perf` may remain useful as a future supplementary diagnostic
+but must NOT create ambiguity about the primary Phase 4 metric.
+
+**Byte metric:** `bytes_received` and `bytes_sent` are wire-level IP-packet
+bytes — total bytes represented by IP packets received/sent by the TLS
+server during the experiment window. Measured via packet capture restricted
+to the controlled lab traffic/interface/port. Excludes Ethernet
+framing/physical-layer overhead. Excludes unrelated traffic and traffic
+outside the experiment window. Does NOT represent application payload bytes.
+Normalized reporting: bytes received/attempt and bytes sent/attempt, while
+preserving raw totals.
+
+**TLS event schema:** Each observed handshake attempt produces a normalized
+TLS event with fields: `negotiated_group`, `negotiated_signature_algorithm`,
+`outcome`. The two negotiated algorithm fields MUST be nullable — a controlled
+abort may terminate before the server has enough protocol evidence to
+determine the negotiated group or signature algorithm. Do not force invented
+values such as `"unknown"`, `"none"`, `"failed"`, or `"N/A"`. Prefer semantic
+null. Outcome values: `completed`, `aborted_pre_finished`, `error`.
+
+**Provenance requirement:** Every normalized TLS event must be traceable to
+an underlying observation source (TLS/server log, client-side handshake
+observation, or packet-derived evidence). The implementation MUST NOT
+manufacture negotiated values from the experiment configuration alone. A
+configured expectation (e.g., C3 = X25519MLKEM768 + ECDSA-P256) is NOT by
+itself evidence that every attempt actually negotiated those values. The
+implementation must distinguish configured expectation from observed
+negotiated result.
+
 ## 9. Defense Experiments
 - **D0 — Baseline:** no admission control.
 - **D1 — Stateless cookie:** TLS 1.3 HelloRetryRequest cookie, as already

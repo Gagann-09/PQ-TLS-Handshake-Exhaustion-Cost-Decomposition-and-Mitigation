@@ -48,6 +48,18 @@ config requests a value above the ceiling (see `rules.md` §2).
   "bytes_received": 123456,
   "bytes_sent": 45678,
   "handshake_outcomes": {"aborted_pre_finished": 1000, "completed": 0},
+  "tls_events": [
+    {
+      "negotiated_group": "X25519MLKEM768",
+      "negotiated_signature_algorithm": "ecdsa_secp256r1_sha256",
+      "outcome": "completed"
+    },
+    {
+      "negotiated_group": null,
+      "negotiated_signature_algorithm": null,
+      "outcome": "aborted_pre_finished"
+    }
+  ],
   "legitimate": {
     "attempts": 29,
     "successes": 28,
@@ -67,6 +79,20 @@ config requests a value above the ceiling (see `rules.md` §2).
 Raw result files are append-only: a run writes a new file, it is never
 edited in place. Derived/aggregated metrics live under `results/processed/`,
 computed from raw files, never the reverse.
+
+**Field semantics (locked 2026-10-01):**
+- `server_cpu_seconds`: CPU-seconds consumed by the `openssl s_server`
+  process during the workload execution window, measured via `pidstat`
+  inside the TLS-server container at 1 Hz.
+- `bytes_received`: Total IP-packet bytes received by the TLS server during
+  the experiment window. Wire-level IP bytes, not application payload.
+- `bytes_sent`: Total IP-packet bytes sent by the TLS server during the
+  experiment window. Wire-level IP bytes, not application payload.
+- `tls_events`: Normalized TLS observation per handshake attempt. The two
+  negotiated algorithm fields MUST be nullable — a controlled abort may
+  terminate before negotiation evidence is observable. Do not force invented
+  values such as `"unknown"`, `"none"`, `"failed"`, or `"N/A"`. Prefer
+  semantic null.
 
 ## 3. Module Contracts
 
@@ -90,10 +116,19 @@ computed from raw files, never the reverse.
   legitimate-traffic CPU accounting uncontaminated by workload code.
 
 ### `src/instrumentation`
-- `sample_cpu(pid, interval) -> CpuSamples`
-- `capture_packets(interface, port, duration) -> PcapMeta` (metadata only;
-  see `rules.md` §9 — no plaintext payload or keylog retention)
-- `read_tls_log(path) -> list[HandshakeEvent]`
+- `sample_cpu(pid, interval) -> CpuSamples` — CPU sampling via `pidstat`
+  inside the TLS-server container, targeting the `openssl s_server` process
+  at 1 Hz. Host-side `psutil` is NOT an experimental fallback.
+- `capture_packets(interface, port, duration) -> PcapMeta` — packet capture
+  via `tcpdump` restricted to the laboratory interface and port. Counts
+  IP-packet bytes (wire-level, not application payload). Metadata only; see
+  `rules.md` §9 — no plaintext payload or keylog retention.
+- `read_tls_log(path) -> list[HandshakeEvent]` — parse TLS-level events.
+  Each event has `negotiated_group`, `negotiated_signature_algorithm`
+  (both nullable), and `outcome` (`completed` | `aborted_pre_finished` |
+  `error`). Every event must be traceable to an underlying observation
+  source — negotiated values MUST NOT be manufactured from the experiment
+  configuration alone.
 
 ### `src/defense`
 - `apply(mode: D0..D3, server_config) -> ServerConfig`

@@ -70,12 +70,43 @@ availability baseline (RQ5). Runs on separate CPU affinity from the workload
 client so its own resource use doesn't contaminate attacker-side cost
 measurements.
 
-### 3.5 Instrumentation
-`perf stat` / `pidstat` for CPU and cycle sampling at 1 Hz on the server
-process; `tcpdump` restricted to the laboratory interface and port for
-packet-size/timing metadata only (no payload decryption, no keylog
-retention — see `rules.md` §9); TLS-level logging of negotiated group,
-negotiated signature algorithm, and handshake outcome.
+### 3.5 Instrumentation (methodology locked 2026-10-01)
+
+**CPU measurement:** `pidstat` inside the TLS-server container, sampling
+the `openssl s_server` process at 1 Hz. Measurement window is the workload
+execution window. Metric is server CPU-seconds. Primary normalization is
+CPU-seconds per handshake attempt (denominator includes all attempts:
+completed, aborted, and failed). Host-side `psutil` is NOT an experimental
+fallback. Docker cumulative stats are NOT the primary CPU measurement.
+`perf` may remain useful as a future supplementary diagnostic but must NOT
+create ambiguity about the primary Phase 4 metric.
+
+**Byte measurement:** `tcpdump` restricted to the laboratory interface and
+port for packet-size/timing metadata only (no payload decryption, no keylog
+retention — see `rules.md` §9). `bytes_received` and `bytes_sent` are
+wire-level IP-packet bytes — total bytes represented by IP packets
+received/sent by the TLS server during the experiment window. Excludes
+Ethernet framing/physical-layer overhead. Excludes unrelated traffic and
+traffic outside the experiment window. Does NOT represent application
+payload bytes.
+
+**TLS event logging:** Each observed handshake attempt produces a normalized
+TLS event with fields: `negotiated_group`, `negotiated_signature_algorithm`,
+`outcome`. The two negotiated algorithm fields MUST be nullable — a
+controlled abort may terminate before the server has enough protocol
+evidence to determine the negotiated group or signature algorithm. Do not
+force invented values such as `"unknown"`, `"none"`, `"failed"`, or
+`"N/A"`. Prefer semantic null. Outcome values: `completed`,
+`aborted_pre_finished`, `error`.
+
+**Provenance requirement:** Every normalized TLS event must be traceable to
+an underlying observation source (TLS/server log, client-side handshake
+observation, or packet-derived evidence). The implementation MUST NOT
+manufacture negotiated values from the experiment configuration alone. A
+configured expectation (e.g., C3 = X25519MLKEM768 + ECDSA-P256) is NOT by
+itself evidence that every attempt actually negotiated those values. The
+implementation must distinguish configured expectation from observed
+negotiated result.
 
 ### 3.6 Network Emulator (optional)
 `tc netem` applied to the lab network namespace for a secondary sweep over
@@ -117,6 +148,30 @@ per-attempt handshake outcome, legitimate-client success count and
 latencies.
 Derived at analysis time: CPU-seconds per attempt, bytes per attempt,
 workload-client/server CPU ratio, legitimate goodput under load.
+
+### 5.1 Measurement Triangle
+
+The three major Phase 4 evidence streams form a conceptual triangle:
+
+```
+                 TLS Events
+                /          \
+               /            \
+              /              \
+       CPU Process Cost ---- Wire Bytes
+```
+
+* TLS events explain WHAT protocol work was observed.
+* CPU measurement explains HOW MUCH server compute was consumed.
+* Packet measurement explains HOW MUCH network traffic accompanied the work.
+
+The three streams must remain independently measurable. Do NOT allow one
+measurement source to silently become a proxy for another:
+
+* packet count is not CPU cost;
+* handshake count is not CPU cost;
+* configured algorithm is not observed negotiation;
+* wall-clock duration is not CPU-seconds.
 
 ## 6. Output Figures
 - **A** — CPU-seconds per attempted handshake, by configuration.

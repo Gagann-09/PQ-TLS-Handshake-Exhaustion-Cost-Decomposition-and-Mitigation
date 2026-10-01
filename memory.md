@@ -368,3 +368,54 @@ configuration measurements await Phase 5 trial campaign.
 
 **Status:** Phase 3 implementation complete. Next unchecked task: Phase 4 —
 Instrumentation.
+
+### P4-001 — Phase 4 instrumentation methodology locked (2026-10-01)
+**CPU measurement contract:** `pidstat` inside the TLS-server container,
+sampling the `openssl s_server` process at 1 Hz. Measurement window is the
+workload execution window. Metric is server CPU-seconds. Primary
+normalization is CPU-seconds per handshake attempt (denominator includes all
+attempts: completed, aborted, and failed). Host-side `psutil` is NOT an
+experimental fallback. Docker cumulative stats are NOT the primary CPU
+measurement. `perf` may remain useful as a future supplementary diagnostic
+but must NOT create ambiguity about the primary Phase 4 metric.
+
+**Byte measurement contract:** `bytes_received` and `bytes_sent` are
+wire-level IP-packet bytes — total bytes represented by IP packets
+received/sent by the TLS server during the experiment window. Measured via
+packet capture restricted to the controlled lab traffic/interface/port.
+Excludes Ethernet framing/physical-layer overhead. Excludes unrelated traffic
+and traffic outside the experiment window. Does NOT represent application
+payload bytes. Normalized reporting: bytes received/attempt and
+bytes sent/attempt, while preserving raw totals.
+
+**TLS event schema:** Each observed handshake attempt produces a normalized
+TLS event with fields: `negotiated_group`, `negotiated_signature_algorithm`,
+`outcome`. The two negotiated algorithm fields MUST be nullable — a
+controlled abort may terminate before the server has enough protocol
+evidence to determine the negotiated group or signature algorithm. Do not
+force invented values such as `"unknown"`, `"none"`, `"failed"`, or
+`"N/A"`. Prefer semantic null. Outcome values: `completed`,
+`aborted_pre_finished`, `error`.
+
+**Provenance requirement:** Every normalized TLS event must be traceable to
+an underlying observation source (TLS/server log, client-side handshake
+observation, or packet-derived evidence). The implementation MUST NOT
+manufacture negotiated values from the experiment configuration alone. A
+configured expectation (e.g., C3 = X25519MLKEM768 + ECDSA-P256) is NOT by
+itself evidence that every attempt actually negotiated those values. The
+implementation must distinguish configured expectation from observed
+negotiated result.
+
+**Measurement triangle:** The three Phase 4 evidence streams (TLS events,
+CPU process cost, wire bytes) form a conceptual triangle. TLS events explain
+WHAT protocol work was observed. CPU measurement explains HOW MUCH server
+compute was consumed. Packet measurement explains HOW MUCH network traffic
+accompanied the work. The three streams must remain independently measurable
+— packet count is not CPU cost, handshake count is not CPU cost, configured
+algorithm is not observed negotiation, wall-clock duration is not CPU-seconds.
+
+**Git hygiene:** `.gitignore` updated to protect instrumentation artifacts:
+`*.pcap`, `*.pcapng`, `*.keylog`, `perf.data*`, `*.pidstat`.
+
+**Status:** Phase 4 methodology locked. Implementation tasks remain pending.
+Next unchecked task: Phase 4 — Wire up instrumentation per `design.md` §3.
