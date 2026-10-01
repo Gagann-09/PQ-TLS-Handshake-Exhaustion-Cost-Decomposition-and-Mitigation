@@ -15,7 +15,7 @@ workload:
 legitimate_client:
   rate_per_sec: 1.0
 target:
-  host: tls-server
+  host: 127.0.0.1
   port: 4433
 network:
   latency_ms: 0

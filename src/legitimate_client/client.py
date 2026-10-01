@@ -4,6 +4,7 @@ See architecture.md §3.4. Runs independently of the workload client.
 """
 from __future__ import annotations
 
+import socket
 import ssl
 import time
 from dataclasses import dataclass
