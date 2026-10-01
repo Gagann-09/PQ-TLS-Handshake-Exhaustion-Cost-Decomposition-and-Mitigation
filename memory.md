@@ -257,3 +257,19 @@ about C0–C4 cost (Phases 2–5). Reproducibility reference: the versions above
 
 **Status:** Phase 1 complete. Next unchecked task: Phase 2 — Classical
 Baseline (C0 implementation).
+
+### P1-002 — Phase 1 runtime verification PASSED (2026-10-01)
+**Docker runtime:** Docker 29.7.2, Compose v5.3.1. Project network
+`network-lab-network` created and destroyed. Container `network-tls-server-1`
+started, ran, and stopped cleanly.
+**TLS connectivity:** One local TLS 1.3 connection to `127.0.0.1:4433`
+succeeded. Protocol: TLSv1.3, Ciphersuite: TLS_AES_256_GCM_SHA384,
+Peer Temp Key: X25519 (253 bits). Self-signed cert verification error
+expected and accepted for lab use.
+**Cleanup:** `docker compose down` removed container and network. Temporary
+certificates deleted from `lab/certs/`. No secrets retained (`rules.md` §9).
+**Fixes applied:** `lab/network/docker-compose.yml` — corrected volume mount
+from `./certs` to `../certs` (matching `generate_certs.sh` output path) and
+fixed multi-line command parsing by putting the entire `sh -c` command on one
+line. Commit `032b21b`.
+**Phase 1 runtime verification: PASSED.**
