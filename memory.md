@@ -297,3 +297,22 @@ measurements await Phase 2 trial campaign.
 
 **Status:** C0 implementation complete. Next unchecked task: Phase 2 —
 Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
+
+### P2-002 — C0 baseline trials completed (2026-10-01)
+**Trials:** 3 C0 W0 (normal_completion) trials, each bounded to 30s / 1000 attempts / concurrency 1.
+**Results (median of 3 trials):**
+- Attempts: ~515 per trial (range 509–524)
+- Completed handshakes: ~484 per trial (range 478–489)
+- Errors: ~28 per trial (range 25–31)
+- Legitimate-client successes: 30/30 (100%) in all trials
+- Legitimate-client p50 latency: ~18 ms
+- Legitimate-client p95 latency: ~33 ms
+- Server CPU: **TBD** — requires Phase 4 instrumentation (`perf`/`pidstat`).
+  `docker stats` CPU% is cumulative since container start and cannot
+  reliably measure CPU during a specific time window.
+- Bytes: **TBD** — requires Phase 4 instrumentation (packet capture).
+**Reproducibility:** Result records written to `results/raw/` (ignored by
+`.gitignore` per project policy — raw data is append-only, not committed).
+**Git commit:** `8c15172` — `feat(baseline): run C0 baseline trials with real measurements`.
+**Status:** C0 baseline trials complete. Server CPU and bytes remain TBD
+until Phase 4 instrumentation is implemented.

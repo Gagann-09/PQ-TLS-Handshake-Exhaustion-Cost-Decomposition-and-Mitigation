@@ -36,7 +36,10 @@ decision in `memory.md`.
       **DONE 2026-10-01** — C0 config, Docker compose, W0/W1 modes,
       8 new tests (31 total pass). TLS negotiation verified: X25519 +
       ecdsa_secp256r1_sha256. See `memory.md` P2-001.
-- [ ] Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
+- [x] Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
+      **DONE 2026-10-01** — 3 C0 W0 trials completed. ~515 attempts/trial,
+      ~484 completed handshakes/trial, 30/30 legitimate-client successes.
+      Server CPU: TBD (requires Phase 4 instrumentation). See `memory.md` P2-002.
 - **Gate:** do not start Phase 3 until C0 measurements are reproducible
   across trials within a reasonable variance band.
 
