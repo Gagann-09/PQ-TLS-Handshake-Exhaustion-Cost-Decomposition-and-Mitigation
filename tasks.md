@@ -20,12 +20,16 @@ decision in `memory.md`.
   Phase 0 build; no reduced-matrix decision required.
 
 ## Phase 1 — Safe Laboratory Skeleton (Days 4–5)
-- [ ] Stand up the Docker lab network, TLS server, legitimate client,
+- [x] Stand up the Docker lab network, TLS server, legitimate client,
       experiment controller, and safety validator from `architecture.md`
       and `design.md`.
+      **DONE 2026-10-01** — 23 tests pass; preflight verified; committed
+      and pushed (`bc026d3`). See `memory.md` P1-001.
 - **Acceptance test:** target allowlist rejects `8.8.8.8` and accepts
   `tls-server`; max-attempts and max-duration are enforced; automatic
   cleanup runs after every experiment (`rules.md` §10).
+  **PASSED 2026-10-01** — `tests/test_preflight.py` and
+  `tests/test_safety.py` both green.
 
 ## Phase 2 — Classical Baseline (Days 6–8)
 - [ ] Implement C0 (X25519 + ECDSA-P256), workload modes W0 and W1.

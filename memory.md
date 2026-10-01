@@ -218,3 +218,42 @@ future host/build lacks native support — no new dependency is introduced.
 **Caveat (not a blocker):** this establishes *negotiation capability only* on
 this specific build/host; it is not a performance result and implies nothing
 about C0–C4 cost (Phases 2–5). Reproducibility reference: the versions above.
+
+### P1-001 — Phase 1 safe laboratory skeleton implemented (2026-10-01)
+**Components built:**
+- `src/controller/safety.py` — safety validator (allowlist, hard limits,
+  fail-closed). Enforces `max_attempts: 1000`, `max_duration_seconds: 30`,
+  `max_concurrency: 1`. Rejects any target outside `{localhost, 127.0.0.1,
+  ::1, tls-server}`.
+- `src/controller/config.py` — YAML config loader with safety validation.
+- `src/controller/experiment.py` — experiment controller (bounded-run
+  lifecycle, result-record writing).
+- `src/workload/client.py` — controlled workload client (bounded attempts,
+  no unbounded rate/spoofing/discovery).
+- `src/legitimate_client/client.py` — legitimate client (fixed low rate,
+  independent of workload).
+- `src/instrumentation/cpu.py` — CPU sampling via psutil.
+- `lab/network/docker-compose.yml` — Docker lab network with TLS server.
+- `lab/server/generate_certs.sh` — self-signed cert generation for lab use.
+- `scripts/setup.sh`, `scripts/lab.sh`, `scripts/collect.sh` — lab lifecycle.
+- `config/safety_limits.yaml`, `config/experiment_matrix.yaml` — config files.
+- `tests/test_safety.py`, `tests/test_preflight.py` — 23 tests, all passing.
+
+**Verification:**
+- 23/23 tests pass (`pytest tests/ -v`).
+- Preflight: `8.8.8.8` rejected, `tls-server` accepted, `localhost` accepted,
+  `127.0.0.1` accepted.
+- Safety: attempts > 1000 rejected, duration > 30 rejected, concurrency > 1
+  rejected, unknown hosts rejected.
+- Git commit: `bc026d3` — `feat(lab): build phase 1 safe laboratory skeleton`.
+- Pushed to `Gagann-09/PQ-TLS-Handshake-Exhaustion-Cost-Decomposition-and-Mitigation`.
+
+**Safety boundaries preserved:**
+- No custom crypto — OpenSSL used for TLS.
+- All network activity local/Docker-local.
+- Hard limits: 1000 attempts, 30 seconds, concurrency 1.
+- Fail-closed on any validation error.
+- No unbounded mode, no spoofing, no discovery, no reflection.
+
+**Status:** Phase 1 complete. Next unchecked task: Phase 2 — Classical
+Baseline (C0 implementation).
