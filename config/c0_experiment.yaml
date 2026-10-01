@@ -1,0 +1,25 @@
+# C0 Classical Baseline Experiment Configuration
+# X25519 + ECDSA-P256
+# See PRD.md §6 and design.md §1
+
+experiment_id: 2026-10-01-C0-W0-R01
+server:
+  configuration: C0
+  defense: D0
+workload:
+  mode: normal_completion
+  key_reuse: fresh_keypair
+  max_attempts: 1000
+  max_duration_seconds: 30
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: tls-server
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 3
+  seed: 42
