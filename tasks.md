@@ -32,7 +32,10 @@ decision in `memory.md`.
   `tests/test_safety.py` both green.
 
 ## Phase 2 — Classical Baseline (Days 6–8)
-- [ ] Implement C0 (X25519 + ECDSA-P256), workload modes W0 and W1.
+- [x] Implement C0 (X25519 + ECDSA-P256), workload modes W0 and W1.
+      **DONE 2026-10-01** — C0 config, Docker compose, W0/W1 modes,
+      8 new tests (31 total pass). TLS negotiation verified: X25519 +
+      ecdsa_secp256r1_sha256. See `memory.md` P2-001.
 - [ ] Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
 - **Gate:** do not start Phase 3 until C0 measurements are reproducible
   across trials within a reasonable variance band.

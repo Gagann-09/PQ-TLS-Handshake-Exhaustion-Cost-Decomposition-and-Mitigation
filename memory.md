@@ -273,3 +273,27 @@ from `./certs` to `../certs` (matching `generate_certs.sh` output path) and
 fixed multi-line command parsing by putting the entire `sh -c` command on one
 line. Commit `032b21b`.
 **Phase 1 runtime verification: PASSED.**
+
+### P2-001 — C0 classical baseline implemented (2026-10-01)
+**Components built:**
+- `config/c0_experiment.yaml` — C0 experiment config (X25519 + ECDSA-P256,
+  W0 mode, hard limits 1000/30/1).
+- `lab/network/docker-compose-c0.yml` — C0-pinned TLS server
+  (`-groups X25519 -sigalgs ecdsa_secp256r1_sha256`).
+- `tests/test_c0.py` — 8 new tests for C0 config loading, safety
+  enforcement, and workload mode validation.
+
+**Verification:**
+- 31/31 tests pass (23 existing + 8 new C0 tests).
+- C0 TLS negotiation verified: TLS 1.3, X25519 (253 bits),
+  ecdsa_secp256r1_sha256, TLS_AES_256_GCM_SHA384.
+- ECDSA P-256 certificates generated for C0 (RSA certs rejected by
+  C0 sigalgs pin).
+- Docker container started, TLS verified, cleaned up. Certs deleted.
+
+**Experimental results:** Not yet measured — CPU sampling and trial
+collection are Phase 4/5 tasks. C0 implementation is complete; baseline
+measurements await Phase 2 trial campaign.
+
+**Status:** C0 implementation complete. Next unchecked task: Phase 2 —
+Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
