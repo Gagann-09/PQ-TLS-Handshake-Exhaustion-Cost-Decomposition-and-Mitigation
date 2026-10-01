@@ -1,0 +1,26 @@
+# C2 PQ Authentication Experiment Configuration
+# X25519 + ML-DSA-65
+# Isolates PQ authentication cost (RQ1)
+# See PRD.md §6 and design.md §1
+
+experiment_id: 2026-10-01-C2-W0-R01
+server:
+  configuration: C2
+  defense: D0
+workload:
+  mode: normal_completion
+  key_reuse: fresh_keypair
+  max_attempts: 1000
+  max_duration_seconds: 30
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: 127.0.0.1
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 3
+  seed: 42

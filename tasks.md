@@ -44,8 +44,15 @@ decision in `memory.md`.
   across trials within a reasonable variance band.
 
 ## Phase 3 — PQ Configurations (Week 2)
-- [ ] Implement C1, C2, C3, C4 per `PRD.md` §6.
-- [ ] Record any `UNSUPPORTED` configuration rather than substituting one.
+- [x] Implement C1, C2, C3, C4 per `PRD.md` §6.
+      **DONE 2026-10-01** — C1–C4 configs, Docker compose files, ML-DSA-65
+      cert generation scripts, 32 new tests (63 total pass). TLS negotiation
+      verified for all four: C1 MLKEM768+ecdsa_secp256r1_sha256, C2
+      X25519+mldsa65, C3 X25519MLKEM768+ecdsa_secp256r1_sha256, C4
+      MLKEM768+mldsa65. All SUPPORTED. See `memory.md` P3-001.
+- [x] Record any `UNSUPPORTED` configuration rather than substituting one.
+      **DONE 2026-10-01** — All four configurations SUPPORTED on OpenSSL
+      3.5.5 default provider; no UNSUPPORTED entries needed.
 
 ## Phase 4 — Instrumentation (Week 3)
 - [ ] Wire up `perf`/`pidstat`/`tcpdump`/TLS logging per `design.md` §3.

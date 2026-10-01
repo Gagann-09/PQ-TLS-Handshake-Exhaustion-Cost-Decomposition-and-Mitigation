@@ -1,0 +1,20 @@
+# C4 Full PQ — ML-KEM-768 + ML-DSA-65
+# Combined PQ configuration (RQ1, RQ2).
+# Reuses the Phase 1 lab network with C4-pinned TLS server.
+# Note: Requires ML-DSA-65 server certificate (see generate_certs_c4.sh).
+
+services:
+  tls-server:
+    image: alpine:3.19
+    command: sh -c "apk add --no-cache openssl && openssl s_server -accept 4433 -cert /certs/server_mldsa65.crt -key /certs/server_mldsa65.key -www -tls1_3 -groups MLKEM768 -sigalgs mldsa65 -naccept 1000"
+    ports:
+      - "4433:4433"
+    volumes:
+      - ../certs:/certs:ro
+    networks:
+      - lab-network
+    restart: unless-stopped
+
+networks:
+  lab-network:
+    driver: bridge

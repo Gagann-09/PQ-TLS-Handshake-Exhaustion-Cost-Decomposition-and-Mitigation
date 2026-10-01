@@ -316,3 +316,55 @@ Collect baseline CPU, bytes, legitimate-client success for ≥3 trials.
 **Git commit:** `8c15172` — `feat(baseline): run C0 baseline trials with real measurements`.
 **Status:** C0 baseline trials complete. Server CPU and bytes remain TBD
 until Phase 4 instrumentation is implemented.
+
+### P3-001 — Phase 3 PQ configurations C1–C4 implemented (2026-10-01)
+**Components built:**
+- `config/c1_experiment.yaml` — C1 experiment config (ML-KEM-768 + ECDSA-P256,
+  W0 mode, hard limits 1000/30/1).
+- `config/c2_experiment.yaml` — C2 experiment config (X25519 + ML-DSA-65,
+  W0 mode, hard limits 1000/30/1).
+- `config/c3_experiment.yaml` — C3 experiment config (X25519MLKEM768 +
+  ECDSA-P256, W0 mode, hard limits 1000/30/1).
+- `config/c4_experiment.yaml` — C4 experiment config (ML-KEM-768 + ML-DSA-65,
+  W0 mode, hard limits 1000/30/1).
+- `lab/network/docker-compose-c1.yml` — C1-pinned TLS server
+  (`-groups MLKEM768 -sigalgs ecdsa_secp256r1_sha256`).
+- `lab/network/docker-compose-c2.yml` — C2-pinned TLS server
+  (`-groups X25519 -sigalgs mldsa65`).
+- `lab/network/docker-compose-c3.yml` — C3-pinned TLS server
+  (`-groups X25519MLKEM768 -sigalgs ecdsa_secp256r1_sha256`).
+- `lab/network/docker-compose-c4.yml` — C4-pinned TLS server
+  (`-groups MLKEM768 -sigalgs mldsa65`).
+- `lab/server/generate_certs_c2.sh` — ML-DSA-65 self-signed cert generation
+  for C2.
+- `lab/server/generate_certs_c4.sh` — ML-DSA-65 self-signed cert generation
+  for C4.
+- `tests/test_c1.py` — 8 new tests for C1 config loading, safety enforcement,
+  and workload mode validation.
+- `tests/test_c2.py` — 8 new tests for C2 config loading, safety enforcement,
+  and workload mode validation.
+- `tests/test_c3.py` — 8 new tests for C3 config loading, safety enforcement,
+  and workload mode validation.
+- `tests/test_c4.py` — 8 new tests for C4 config loading, safety enforcement,
+  and workload mode validation.
+
+**Verification:**
+- 63/63 tests pass (31 existing + 32 new C1–C4 tests).
+- TLS negotiation verified for all four configurations (OpenSSL 3.5.5,
+  default provider, localhost):
+  - **C1:** TLSv1.3, group=MLKEM768, sig=ecdsa_secp256r1_sha256 — SUPPORTED.
+  - **C2:** TLSv1.3, group=X25519 (Peer Temp Key: X25519, 253 bits),
+    sig=mldsa65 — SUPPORTED.
+  - **C3:** TLSv1.3, group=X25519MLKEM768, sig=ecdsa_secp256r1_sha256 —
+    SUPPORTED.
+  - **C4:** TLSv1.3, group=MLKEM768, sig=mldsa65 — SUPPORTED.
+- No unintended fallback: each configuration negotiated exactly the pinned
+  group and signature algorithm.
+- Temporary certificates deleted after verification; no secrets retained.
+
+**Experimental results:** Not yet measured — CPU sampling and trial
+collection are Phase 4/5 tasks. C1–C4 implementation is complete; PQ
+configuration measurements await Phase 5 trial campaign.
+
+**Status:** Phase 3 implementation complete. Next unchecked task: Phase 4 —
+Instrumentation.
