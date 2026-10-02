@@ -495,3 +495,49 @@ fields (owner decision).
 
 **Status:** F-01..F-04 remediated and verified at unit + host-runtime level.
 Next: Phase 4 verification gate (to include container runtime).
+
+### P4-003 — Phase 4 verification gate PASSED (2026-10-02)
+**Docker runtime:** Docker 29.7.2, Compose v5.3.1, daemon RUNNING. Container
+`network-tls-server-1` (alpine:3.19) operational.
+
+**F-05 PID resolution:** RESOLVED at runtime. `find_server_pid` inspects
+`/proc/*/cmdline` and requires exactly one match where the executable is
+`openssl` (not a shell wrapper) and `s_server` is in the arguments. Verified
+against the live container: exactly one `openssl s_server` process (PID 1),
+no shell-wrapper false positives.
+
+**CPU measurement (container pidstat):** VERIFIED. W0 run: 0.07 CPU-seconds
+over 50 attempts (0.0014 CPU-seconds/attempt). W1 run: 0.06 CPU-seconds over
+50 attempts (0.0012 CPU-seconds/attempt). Both non-zero, both measured via
+`pidstat` inside the container at 1 Hz.
+
+**Packet measurement (container tcpdump):** VERIFIED. W0 run: 50141 bytes RX,
+79053 bytes TX. W1 run: 33782 bytes RX, 37929 bytes TX. Both non-zero,
+both measured via `tcpdump` inside the container, parsed from pcap at the
+IP-packet layer (excluding Ethernet framing).
+
+**TLS W0:** VERIFIED. 50/50 `completed` outcomes. TLS events all `completed`
+with null negotiated fields (no fabricated configuration values).
+
+**TLS W1:** VERIFIED. 50/50 `aborted_pre_finished` outcomes, 0 `completed`.
+TLS events all `aborted_pre_finished` with null negotiated fields.
+
+**Result schema:** VERIFIED. `design.md §2` synced with implementation.
+Runtime results contain all required fields: `server_cpu_seconds`,
+`server_cpu_seconds_per_attempt`, `bytes_received`, `bytes_sent`,
+`bytes_received_per_attempt`, `bytes_sent_per_attempt`, `tls_events`,
+`measurement_status`, `measurement_errors`. Per-attempt normalization uses
+ALL bounded attempts. Missing measurements are null, never zero.
+
+**Tests:** 96/96 pass (63 pre-existing + 33 new for F-01..F-05).
+
+**Cleanup:** VERIFIED. No containers remaining, no pcap files, no pidstat
+files, no keylogs, no runtime garbage in Git.
+
+**Scientific integrity:** Three evidence streams independently measured:
+TLS events (what protocol work was observed), CPU process cost (how much
+server compute was consumed), wire bytes (how much network traffic
+accompanied the work). No stream used as a proxy for another.
+
+**Status:** Phase 4 instrumentation VERIFIED. Next: Phase 5 controlled
+measurement campaign (requires explicit authorization).

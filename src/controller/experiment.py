@@ -278,7 +278,13 @@ def run_experiment(
             if capture.success:
                 bytes_received = capture.meta.bytes_received
                 bytes_sent = capture.meta.bytes_sent
-                pkt_status = "measured"
+                if attempts > 0 and bytes_received == 0 and bytes_sent == 0:
+                    pkt_status = "failed"
+                    pkt_error = pkt_error or "pcap contained no IP bytes for the server port"
+                    bytes_received = None
+                    bytes_sent = None
+                else:
+                    pkt_status = "measured"
             else:
                 pkt_status = "failed"
                 pkt_error = capture.error

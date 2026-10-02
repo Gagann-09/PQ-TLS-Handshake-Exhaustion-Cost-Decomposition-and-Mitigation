@@ -47,82 +47,130 @@ class CpuSamplingSession:
     error: str | None = None
 
 
-def find_server_pid(container_name: str, timeout: float = 10.0) -> int | None:
-    """Find the openssl s_server process PID inside the container.
+def _cmdline_is_openssl_s_server(cmdline: bytes) -> bool:
+    """True when cmdline is the actual openssl s_server process, not a shell wrapper."""
+    if not cmdline:
+        return False
+    parts = cmdline.split(b"\x00")
+    if parts and parts[-1] == b"":
+        parts = parts[:-1]
+    if not parts:
+        return False
+    exe = parts[0].decode("utf-8", errors="replace")
+    if not (exe == "openssl" or exe.endswith("/openssl")):
+        return False
+    return b"s_server" in parts[1:]
 
-    Uses pgrep to identify the process by command line, not assuming PID 1.
-    Returns None if the process cannot be unambiguously identified.
-    """
+
+def _list_proc_pids(container_name: str, timeout: float) -> list[int]:
+    """List numeric PIDs visible inside the container."""
     try:
         result = subprocess.run(
-            ["docker", "exec", container_name, "pgrep", "-f", "openssl s_server"],
+            ["docker", "exec", container_name, "sh", "-c", "ls -1 /proc"],
             capture_output=True,
             text=True,
             timeout=timeout,
             check=False,
         )
         if result.returncode != 0:
+            return []
+        pids: list[int] = []
+        for name in result.stdout.split():
+            if name.isdigit():
+                pids.append(int(name))
+        return pids
+    except Exception:
+        return []
+
+
+def _read_proc_cmdline(container_name: str, pid: int, timeout: float) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["docker", "exec", container_name, "cat", f"/proc/{pid}/cmdline"],
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        if result.returncode != 0:
             return None
-        pids = [int(p.strip()) for p in result.stdout.strip().split("\n") if p.strip()]
-        if len(pids) != 1:
-            # Ambiguous — zero or multiple matches
+        return result.stdout
+    except Exception:
+        return None
+
+
+def find_server_pid(container_name: str, timeout: float = 10.0) -> int | None:
+    """Find the openssl s_server process PID inside the container.
+
+    Inspects /proc cmdlines so a shell wrapper that merely mentions
+    ``openssl s_server`` in its ``-c`` string is not mistaken for the server.
+    Returns None if the process cannot be unambiguously identified.
+    """
+    try:
+        matches: list[int] = []
+        for pid in _list_proc_pids(container_name, timeout):
+            cmdline = _read_proc_cmdline(container_name, pid, timeout)
+            if cmdline is not None and _cmdline_is_openssl_s_server(cmdline):
+                matches.append(pid)
+        if len(matches) != 1:
             return None
-        return pids[0]
+        return matches[0]
     except Exception:
         return None
 
 
 def verify_server_pid(container_name: str, pid: int, timeout: float = 10.0) -> bool:
-    """Verify that the given PID is actually the openssl s_server process.
-
-    Checks that the process exists and its command line matches.
-    """
-    try:
-        result = subprocess.run(
-            ["docker", "exec", container_name, "cat", f"/proc/{pid}/cmdline"],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        if result.returncode != 0:
-            return False
-        cmdline = result.stdout.replace("\x00", " ").strip()
-        return "openssl" in cmdline and "s_server" in cmdline
-    except Exception:
-        return False
+    """Verify that the given PID is actually the openssl s_server process."""
+    cmdline = _read_proc_cmdline(container_name, pid, timeout)
+    return cmdline is not None and _cmdline_is_openssl_s_server(cmdline)
 
 
 def _parse_pidstat_output(output: str, interval: float) -> CpuSamples:
     """Parse pidstat output and return CpuSamples.
 
-    pidstat output format (with -p PID):
-    ```
-    Linux 5.10.0 (hostname)     10/01/2026     _x86_64_    (16 CPU)
+    Two real pidstat output forms are handled.
 
-    #      UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
-             0       123    1.23   4.56    0.00    0.00   5.79     -  openssl
+    Timestamped (an interval is used — the form this project consumes):
     ```
+    Linux 6.6.87.2-microsoft-standard-WSL2 (host)   10/01/26   _x86_64_  (16 CPU)
+
+    17:12:10      UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
+    17:12:11        0         1    1.23   4.56    0.00    0.00   5.79     8  openssl
+    Average:        0         1    0.61   2.28    0.00    0.00   2.89     -  openssl
+    ```
+
+    Since-boot (no interval):
+    ```
+    #      UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
+             0         1    1.23   4.56    0.00    0.00   5.79     -  openssl
+    ```
+
+    In the timestamped form the leading HH:MM:SS column is stripped before the
+    UID/PID/%CPU columns are read.
     """
     samples = CpuSamples()
     for line in output.split("\n"):
         line = line.strip()
-        if not line or line.startswith("Linux") or line.startswith("#"):
+        if (
+            not line
+            or line.startswith("Linux")
+            or line.startswith("#")
+            or line.startswith("Average")
+        ):
             continue
-        # Match data lines: UID PID %usr %system %guest %wait %CPU CPU Command
         parts = line.split()
+        # Strip the leading timestamp column (present when an interval is used).
+        if parts and ":" in parts[0]:
+            parts = parts[1:]
+        # Columns: UID PID %usr %system %guest %wait %CPU CPU Command
         if len(parts) < 8:
             continue
         try:
-            # parts[0] = UID, parts[1] = PID, parts[2] = %usr, parts[3] = %system,
-            # parts[4] = %guest, parts[5] = %wait, parts[6] = %CPU
-            uid = int(parts[0])
-            pid = int(parts[1])
+            int(parts[1])          # PID column must be a valid integer
             cpu_percent = float(parts[6])
-            samples.timestamps.append(len(samples.timestamps) * interval)
-            samples.cpu_percent.append(cpu_percent)
         except (ValueError, IndexError):
             continue
+        samples.timestamps.append(len(samples.timestamps) * interval)
+        samples.cpu_percent.append(cpu_percent)
     return samples
 
 
@@ -157,7 +205,14 @@ def start_cpu_sampling(
     """
     session = CpuSamplingSession(container_name=container_name, interval=interval)
 
-    pid = find_server_pid(container_name)
+    pid: int | None = None
+    pid_lookup_timeout = 10.0
+    deadline = time.monotonic() + 45.0
+    while time.monotonic() < deadline:
+        pid = find_server_pid(container_name, timeout=pid_lookup_timeout)
+        if pid is not None:
+            break
+        time.sleep(0.5)
     if pid is None:
         session.error = "openssl s_server PID could not be identified"
         return session
@@ -165,18 +220,11 @@ def start_cpu_sampling(
         session.error = "server PID verification failed"
         return session
 
-    # Ensure procps is installed (provides pidstat).
-    try:
-        subprocess.run(
-            ["docker", "exec", container_name, "sh", "-c",
-             "command -v pidstat || apk add --no-cache procps"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except Exception as e:
-        session.error = f"pidstat is not available: {e}"
+    # Ensure sysstat is installed (it provides pidstat; procps does NOT).
+    from src.instrumentation.container import ensure_container_tool
+
+    if not ensure_container_tool(container_name, "pidstat", "sysstat"):
+        session.error = "pidstat is not available (sysstat install failed)"
         return session
 
     try:

@@ -44,22 +44,36 @@ config requests a value above the ceiling (see `rules.md` §2).
   "attempts": 1000,
   "duration_seconds": 28.4,
   "server_cpu_seconds": 12.43,
+  "server_cpu_seconds_per_attempt": 0.01243,
   "workload_client_cpu_seconds": 1.02,
   "bytes_received": 123456,
   "bytes_sent": 45678,
+  "bytes_received_per_attempt": 123.456,
+  "bytes_sent_per_attempt": 45.678,
   "handshake_outcomes": {"aborted_pre_finished": 1000, "completed": 0},
   "tls_events": [
     {
       "negotiated_group": "X25519MLKEM768",
       "negotiated_signature_algorithm": "ecdsa_secp256r1_sha256",
-      "outcome": "completed"
+      "outcome": "completed",
+      "evidence_source": "openssl_handshake_transcript"
     },
     {
       "negotiated_group": null,
       "negotiated_signature_algorithm": null,
-      "outcome": "aborted_pre_finished"
+      "outcome": "aborted_pre_finished",
+      "evidence_source": "client_handshake_outcome"
     }
   ],
+  "measurement_status": {
+    "server_cpu": "measured",
+    "packets": "measured",
+    "tls_events": "observed"
+  },
+  "measurement_errors": {
+    "server_cpu": null,
+    "packets": null
+  },
   "legitimate": {
     "attempts": 29,
     "successes": 28,
@@ -84,10 +98,17 @@ computed from raw files, never the reverse.
 - `server_cpu_seconds`: CPU-seconds consumed by the `openssl s_server`
   process during the workload execution window, measured via `pidstat`
   inside the TLS-server container at 1 Hz.
+- `server_cpu_seconds_per_attempt`: `server_cpu_seconds` divided by ALL
+  bounded handshake attempts (including completed, aborted, and failed).
+  Null when CPU was not measured.
 - `bytes_received`: Total IP-packet bytes received by the TLS server during
   the experiment window. Wire-level IP bytes, not application payload.
 - `bytes_sent`: Total IP-packet bytes sent by the TLS server during the
   experiment window. Wire-level IP bytes, not application payload.
+- `bytes_received_per_attempt` / `bytes_sent_per_attempt`: raw byte totals
+  divided by ALL bounded attempts. Null when packet capture did not succeed.
+- `measurement_status` / `measurement_errors`: per-stream availability so
+  missing measurements remain null in the numeric fields, never zero.
 - `tls_events`: Normalized TLS observation per handshake attempt. The two
   negotiated algorithm fields MUST be nullable — a controlled abort may
   terminate before negotiation evidence is observable. Do not force invented
