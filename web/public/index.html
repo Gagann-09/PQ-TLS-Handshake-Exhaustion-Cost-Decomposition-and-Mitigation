@@ -6,8 +6,11 @@
   <title>PQ-TLS Handshake Exhaustion: Cost Decomposition and Mitigation</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script type="module" src="data/loader.js"></script>
+  <script type="module" src="app.js"></script>
 </head>
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <header class="hero">
     <div class="container">
       <h1>PQ-TLS Handshake Exhaustion</h1>
@@ -21,23 +24,31 @@
     </div>
   </header>
 
-  <nav class="toc">
-    <div class="container">
-      <ul>
-        <li><a href="#problem">Problem</a></li>
-        <li><a href="#configurations">Configurations</a></li>
-        <li><a href="#architecture">Architecture</a></li>
-        <li><a href="#results">Results</a></li>
-        <li><a href="#d1">D1 Finding</a></li>
-        <li><a href="#defenses">Defenses</a></li>
-        <li><a href="#challenges">Challenges</a></li>
-        <li><a href="#reproducibility">Reproducibility</a></li>
-        <li><a href="#limitations">Limitations</a></li>
+  <nav class="toc" id="toc" aria-label="Main navigation">
+    <div class="container toc-container">
+      <button class="toc-menu-btn" id="toc-menu-btn" aria-expanded="false" aria-controls="toc-list" aria-label="Open navigation menu">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+        <span class="toc-menu-text">Menu</span>
+      </button>
+      <ul id="toc-list" class="toc-list" role="menubar">
+        <li role="none"><a href="#problem" role="menuitem">Problem</a></li>
+        <li role="none"><a href="#configurations" role="menuitem">Configurations</a></li>
+        <li role="none"><a href="#architecture" role="menuitem">Architecture</a></li>
+        <li role="none"><a href="#results" role="menuitem">Results</a></li>
+        <li role="none"><a href="#d1" role="menuitem">D1 Finding</a></li>
+        <li role="none"><a href="#defenses" role="menuitem">Defenses</a></li>
+        <li role="none"><a href="#challenges" role="menuitem">Challenges</a></li>
+        <li role="none"><a href="#reproducibility" role="menuitem">Reproducibility</a></li>
+        <li role="none"><a href="#limitations" role="menuitem">Limitations</a></li>
       </ul>
     </div>
   </nav>
 
-  <main class="container">
+  <main class="container" id="main-content">
     <!-- Problem Section -->
     <section id="problem" class="section">
       <h2>Research Problem</h2>
@@ -98,6 +109,76 @@
           </ul>
         </div>
       </div>
+
+      <!-- C0–C4 Interactive Explorer -->
+      <div class="section" id="explorer" aria-labelledby="explorer-title">
+        <h2 id="explorer-title">C0–C4 Interactive Explorer</h2>
+        <p>Select a configuration and workload to see canonical measurements. Data sourced from Phase 5 campaign trials (external JSON).</p>
+
+        <div class="explorer-controls" role="group" aria-label="Configuration and workload selection">
+          <div class="control-group">
+            <label for="config-select" class="control-label">Configuration</label>
+            <div class="segmented" id="config-segmented" role="tablist" aria-label="Configuration"></div>
+          </div>
+          <div class="control-group">
+            <label for="workload-select" class="control-label">Workload</label>
+            <div class="segmented" id="workload-segmented" role="group" aria-label="Workload"></div>
+          </div>
+        </div>
+
+        <div class="explorer-grid">
+          <div class="card explorer-detail" aria-live="polite">
+            <h3 id="explorer-config-title">C0 — X25519 + ECDSA-P256</h3>
+            <p id="explorer-config-desc" class="sm">Classical baseline.</p>
+            <table class="explorer-table">
+              <tbody>
+                <tr><th>CPU / attempt</th><td id="explorer-cpu">—</td></tr>
+                <tr><th>RX / attempt</th><td id="explorer-rx">—</td></tr>
+                <tr><th>TX / attempt</th><td id="explorer-tx">—</td></tr>
+                <tr><th>Key establishment</th><td id="explorer-ke">—</td></tr>
+                <tr><th>Authentication</th><td id="explorer-au">—</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="card explorer-bars">
+            <h3>CPU seconds per attempt <span id="explorer-workload-label">(W0)</span></h3>
+            <div class="bars" id="explorer-cpu-bars" role="img" aria-label="CPU per attempt for all configurations"></div>
+            <p class="axis">CPU seconds per attempt (axis starts at 0)</p>
+          </div>
+        </div>
+
+        <div class="explorer-grid">
+          <div class="card explorer-bars">
+            <h3>RX bytes per attempt</h3>
+            <div class="bars" id="explorer-rx-bars" role="img" aria-label="RX bytes per attempt for all configurations"></div>
+            <p class="axis">bytes (starts at 0)</p>
+          </div>
+          <div class="card explorer-bars">
+            <h3>TX bytes per attempt</h3>
+            <div class="bars" id="explorer-tx-bars" role="img" aria-label="TX bytes per attempt for all configurations"></div>
+            <p class="axis">bytes (starts at 0)</p>
+          </div>
+        </div>
+
+        <div class="card scroll" style="margin-top:1.5rem">
+          <h3>Full Measurement Table (Phase 5 Campaign Means)</h3>
+          <table id="explorer-table">
+            <thead>
+              <tr>
+                <th>Config</th>
+                <th>Workload</th>
+                <th>CPU s/attempt</th>
+                <th>RX B/attempt</th>
+                <th>TX B/attempt</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <p class="note">30 campaign trials plus 2 historical pilots; pilots are not mixed into these campaign means. Same OpenSSL 3.5.x build within the campaign.</p>
+      </div>
     </section>
 
     <!-- Architecture Section -->
@@ -106,6 +187,21 @@
       <div class="figure-container">
         <img src="assets/diagrams/architecture.svg" alt="Experimental Architecture" class="diagram">
       </div>
+
+      <!-- Interactive Architecture Node Inspector -->
+      <div class="architecture-inspector" id="architecture-inspector" aria-labelledby="arch-inspector-title">
+        <h3 id="arch-inspector-title">Architecture Node Inspector</h3>
+        <p>Select a component to see its role, inputs/outputs, and relationship to the measurement methodology.</p>
+
+        <div class="arch-nodes" role="group" aria-label="Architecture components" id="arch-nodes">
+          <!-- Nodes rendered by JS -->
+        </div>
+
+        <div class="arch-detail" id="arch-detail" role="region" aria-live="polite" aria-label="Selected component details">
+          <!-- Detail content rendered by JS -->
+        </div>
+      </div>
+
       <h3>Measurement Triangle</h3>
       <p>Three independent evidence streams — no stream proxies another:</p>
       <div class="figure-container">
@@ -171,13 +267,43 @@
       <div class="figure-container">
         <img src="assets/diagrams/d1_hrr_sequence.svg" alt="D1 HRR Sequence" class="diagram">
       </div>
-      <h3>Observed Sequence</h3>
-      <ol class="sequence">
-        <li><strong>ClientHello</strong> — supported_groups: X25519, MLKEM768; key_share: X25519</li>
-        <li><strong>HelloRetryRequest</strong> — RFC 8446 special random observed; requests key_share: MLKEM768; <strong>cookie extension: ABSENT</strong></li>
-        <li><strong>ClientHello2</strong> — key_share: MLKEM768; <strong>cookie extension: ABSENT</strong></li>
-        <li><strong>ServerHello</strong> — negotiated group: MLKEM768 → completed</li>
-      </ol>
+
+      <!-- Interactive HRR Sequence Stepper -->
+      <div class="d1-stepper" aria-label="D1 HRR sequence steps">
+        <div class="stepper-controls" role="group" aria-label="HRR sequence step selection">
+          <button class="step-btn" role="tab" aria-selected="true" data-step="0" aria-controls="step-panel">
+            <span class="step-num">1</span>
+            <span class="step-title">ClientHello 1</span>
+          </button>
+          <button class="step-btn" role="tab" aria-selected="false" data-step="1" aria-controls="step-panel">
+            <span class="step-num">2</span>
+            <span class="step-title">HelloRetryRequest</span>
+          </button>
+          <button class="step-btn" role="tab" aria-selected="false" data-step="2" aria-controls="step-panel">
+            <span class="step-num">3</span>
+            <span class="step-title">ClientHello 2</span>
+          </button>
+          <button class="step-btn" role="tab" aria-selected="false" data-step="3" aria-controls="step-panel">
+            <span class="step-num">4</span>
+            <span class="step-title">ServerHello</span>
+          </button>
+        </div>
+
+        <div class="stepper-content" id="step-panel" role="tabpanel" aria-live="polite">
+          <!-- Step content rendered by JS -->
+        </div>
+
+        <div class="d1-badge-row">
+          <span class="badge badge-warning" id="cookie-badge">COOKIE NOT OBSERVED</span>
+          <span class="badge badge-ok" id="hrr-badge">HRR OBSERVED</span>
+        </div>
+      </div>
+
+      <h3>D1 Measured Outcome (C1×W1, Phase 7)</h3>
+      <div class="d1-metrics" id="d1-metrics">
+        <!-- Metrics rendered by JS -->
+      </div>
+
       <p><strong>Implication:</strong> D1 in this testbed reduces to HRR-induced 1-RTT delay without the stateless cookie's DoS-reduction property. Server still processes ClientHello2 → encapsulation. The custom <code>SSL_stateless()</code> C server was abandoned (D7-010) due to <code>SSL_R_INTERNAL_ERROR</code> in <code>tls_construct_stoc_cookie</code> for ML-KEM-768.</p>
     </section>
 
@@ -198,6 +324,46 @@
       <h3>Figure F: Legitimate-Client Trade-off</h3>
       <div class="chart-container">
         <canvas id="chartFigureF"></canvas>
+      </div>
+
+      <!-- D0–D3 Interactive Defense Explorer -->
+      <div class="defense-explorer" id="defense-explorer" aria-labelledby="defense-explorer-title">
+        <h3 id="defense-explorer-title">D0–D3 Defense Explorer</h3>
+        <p>Select a defense mode to see canonical Phase 7 measurements. Data sourced from 12 campaign trials (3 per defense).</p>
+
+        <div class="defense-selector" role="group" aria-label="Defense mode selection">
+          <button class="defense-btn" role="tab" aria-selected="true" data-defense="D0" aria-controls="defense-detail">
+            <span class="defense-id">D0</span>
+            <span class="defense-name">Baseline</span>
+          </button>
+          <button class="defense-btn" role="tab" aria-selected="false" data-defense="D1" aria-controls="defense-detail">
+            <span class="defense-id">D1</span>
+            <span class="defense-name">HRR (no cookie)</span>
+          </button>
+          <button class="defense-btn" role="tab" aria-selected="false" data-defense="D2" aria-controls="defense-detail">
+            <span class="defense-id">D2</span>
+            <span class="defense-name">Source Budget</span>
+          </button>
+          <button class="defense-btn" role="tab" aria-selected="false" data-defense="D3" aria-controls="defense-detail">
+            <span class="defense-id">D3</span>
+            <span class="defense-name">Combined</span>
+          </button>
+        </div>
+
+        <div class="defense-grid">
+          <div class="card defense-detail" id="defense-detail" role="tabpanel" aria-live="polite">
+            <!-- Detail content rendered by JS -->
+          </div>
+
+          <div class="card defense-comparison">
+            <h4>Comparison vs D0</h4>
+            <div class="comparison-bars" id="comparison-bars" role="img" aria-label="CPU reduction comparison"></div>
+          </div>
+        </div>
+
+        <div class="defense-badges" id="defense-badges" aria-live="polite">
+          <!-- Status badges rendered by JS -->
+        </div>
       </div>
 
       <div class="defense-table-container">
@@ -261,6 +427,20 @@
       <p>Documented from project history (memory.md P1-001 through D7-011). Each follows: Problem → Investigation → Resolution → Final Status.</p>
       <div class="figure-container">
         <img src="assets/diagrams/challenges.svg" alt="Challenges Timeline" class="diagram">
+      </div>
+
+      <!-- Engineering Failures & Remediation Accordion -->
+      <div class="engineering-accordion" id="engineering-accordion" aria-labelledby="eng-accordion-title">
+        <h3 id="eng-accordion-title">Instrumentation & Validity Remediation</h3>
+        <p class="accordion-preamble">
+          The following issues were discovered during the project's engineering and instrumentation validation phase. 
+          These are <strong>experimental validity issues</strong> in the measurement infrastructure, not vulnerabilities in TLS itself. 
+          Each was corrected before the final campaign data was collected.
+        </p>
+
+        <div class="accordion-list" role="region" aria-label="Engineering remediation items">
+          <!-- Accordion items rendered by JS -->
+        </div>
       </div>
     </section>
 
@@ -341,6 +521,5 @@ python scripts/run_phase7_analysis.py</code></pre>
     </div>
   </footer>
 
-  <script src="app.js"></script>
-</body>
+  </body>
 </html>
