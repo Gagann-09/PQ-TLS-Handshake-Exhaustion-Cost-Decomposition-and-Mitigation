@@ -129,9 +129,16 @@ negotiated result.
 
 ## 9. Defense Experiments
 - **D0 — Baseline:** no admission control.
-- **D1 — Stateless cookie:** TLS 1.3 HelloRetryRequest cookie, as already
-  specified by RFC 8446 and discussed in the DoS-resistance context by
-  [RFC 9954](https://www.rfc-editor.org/rfc/rfc9954.html).
+- **D1 — HRR-based admission control:** TLS 1.3 HelloRetryRequest forced
+  via key-share mismatch with OpenSSL 3.5.x `s_server -stateless`. The
+  server is configured with ML-KEM-768 as the preferred group; the client
+  advertises X25519 and ML-KEM-768 but sends only X25519 in the initial
+  key_share, triggering HRR requesting ML-KEM-768. **Important limitation:**
+  In the tested OpenSSL 3.5.x + ML-KEM-768 environment, the stateless
+  cookie extension (RFC 8446 §4.2.2) was not observed in the HRR or the
+  subsequent ClientHello2. The mechanism operates as HRR without cookie
+  exchange for this PQ-TLS configuration. See `memory.md` D7-011 for the
+  empirical resolution.
 - **D2 — Source admission budget:** a bounded per-source connection-rate
   cap, implemented outside the TLS library.
 - **D3 — Combined:** D1 + D2.

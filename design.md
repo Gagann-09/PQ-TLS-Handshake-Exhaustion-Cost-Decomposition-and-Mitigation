@@ -81,6 +81,24 @@ config requests a value above the ceiling (see `rules.md` §2).
     "p95_latency_ms": 82.1,
     "timeouts": 1
   },
+  "d1_validation": {
+    "enabled": true,
+    "handshakes_requested": 3,
+    "handshakes_completed": 3,
+    "observed_sequence": ["client_hello", "hello_retry_request",
+                          "client_hello2", "server_hello"],
+    "hrr_observed": true,
+    "cookie_observed": false,
+    "client_hello2_observed": true,
+    "server_hello_observed": true,
+    "negotiated_group": "MLKEM768",
+    "rtt_count": 2,
+    "rtt_latency_p50_ms": 1.4,
+    "rtt_latency_p95_ms": 1.9,
+    "evidence_sources": ["openssl_handshake_transcript", "pcap"],
+    "measurement_status": "observed",
+    "measurement_error": null
+  },
   "environment": {
     "git_commit": "TBD",
     "os": "TBD",
@@ -114,6 +132,19 @@ computed from raw files, never the reverse.
   terminate before negotiation evidence is observable. Do not force invented
   values such as `"unknown"`, `"none"`, `"failed"`, or `"N/A"`. Prefer
   semantic null.
+- `d1_validation`: Observation-derived evidence of the D1 forced-HRR flow
+  (ClientHello -> HRR -> ClientHello2 -> ServerHello), produced
+  by a **separate bounded capture window** (see `memory.md` D7-005/D7-007).
+  Present only when validation is enabled. It is DELIBERATELY separate from —
+  and MUST NOT contribute to — `attempts`, `server_cpu_seconds_per_attempt`,
+  or `bytes_*_per_attempt`. `observed_sequence`, the `*_observed` flags,
+  `cookie_observed`, and `negotiated_group` come only from actual observations
+  (packet capture and the OpenSSL `s_client -msg/-state` transcript), never
+  from the configuration. `measurement_status` is `observed` | `unavailable` |
+  `failed`. **For the C1 PQ-TLS configuration (ML-KEM-768), `cookie_observed`
+  is empirically `false` — the OpenSSL 3.5.x stateless cookie extension is not
+  emitted in the HRR or echoed in ClientHello2. This is a measured outcome, not
+  missing data.**
 
 ## 3. Module Contracts
 
@@ -132,7 +163,15 @@ computed from raw files, never the reverse.
   allowlist — this is a structural constraint, not a runtime flag.
 
 ### `src/legitimate_client`
-- `run(rate, duration) -> LegitimateStats`
+- `run(rate, duration) -> LegitimateStats` (contract extended — see
+  `memory.md` D7-008): success is defined as TLS handshake COMPLETION, never
+  as receipt of application payload. When a lab client container is
+  available, the handshake runs in-network via OpenSSL 3.5.x (C1 capable);
+  the host Python path is retained only as a non-C1 fallback.
+- `run_in_network_handshake(container, host, port, groups, sigalgs, timeout)
+  -> HandshakeObservationResult` — one bounded full TLS 1.3 handshake inside
+  the lab network; returns the observed OpenSSL transcript. Used by the D1
+  validation phase.
 - Runs independently of `src/workload`; must not import it, to keep
   legitimate-traffic CPU accounting uncontaminated by workload code.
 

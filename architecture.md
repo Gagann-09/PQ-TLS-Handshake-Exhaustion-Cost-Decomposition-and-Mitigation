@@ -121,7 +121,8 @@ ClientHello
     ▼
 ┌───────────────────────┐
 │ Admission decision     │
-│ cookie required? (D1)  │
+│ HRR required? (D1)     │
+│ cookie observed? (D1)  │
 │ source budget? (D2)    │
 └───────────┬─────────────┘
             │ accepted
@@ -130,6 +131,15 @@ ClientHello
 ```
 The defense layer does not alter ML-KEM, ML-DSA, X25519, or ECDSA
 behavior — it only gates whether a ClientHello reaches full processing.
+
+**D1 mechanism detail (empirically validated):**
+- Server: `openssl s_server -stateless -tls1_3 -groups MLKEM768 -sigalgs ecdsa_secp256r1_sha256`
+- Client initial: supported_groups = X25519, MLKEM768; key_share = X25519
+- Server response: HRR with RFC 8446 special random, requesting MLKEM768 key_share
+- Client second: ClientHello2 with MLKEM768 key_share
+- Server final: ServerHello with MLKEM768
+- **Cookie extension (RFC 8446 §4.2.2): NOT observed in HRR or ClientHello2 for ML-KEM-768 in OpenSSL 3.5.x**
+- The `cookie_observed` measurement field is explicitly `false` — this is a legitimate observed outcome, not missing data
 
 ## 4. Experiment Matrix
 ```

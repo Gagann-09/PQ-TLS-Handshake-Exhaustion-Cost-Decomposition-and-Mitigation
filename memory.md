@@ -541,3 +541,237 @@ accompanied the work). No stream used as a proxy for another.
 
 **Status:** Phase 4 instrumentation VERIFIED. Next: Phase 5 controlled
 measurement campaign (requires explicit authorization).
+
+### P5-001 — Phase 5 pilot (C0 × W0, C0 × W1) PASSED (2026-10-02)
+One short bounded pilot per authorized instruction; full C0–C4 campaign NOT
+run. Configs `config/pilot_c0_w0.yaml` / `config/pilot_c0_w1.yaml`
+(max_attempts 50, max_duration_seconds 10, concurrency 1, target
+127.0.0.1:4433, D0, fresh_keypair), driven by `scripts/run_pilot.py` through
+`run_experiment()` with `lab/network/docker-compose-c0.yml`.
+
+**C0 W0** (`results/raw/2026-10-02-C0-W0-R10.json`): 50 attempts, 50
+completed, 0 errors, duration 3.066 s; server_cpu 0.07 s via container
+pidstat, 0.0014 CPU-s/attempt; RX 51050 / TX 80601 bytes via container
+tcpdump, 1021.0 / 1612.02 bytes-per-attempt; tls_events 50×completed,
+evidence_source `client_handshake_outcome`, negotiated fields null (no
+config-derived values). Independent transcript observation (genuine
+`openssl s_client` brief) parsed by `parse_openssl_handshake_observation`:
+group `X25519`, signature `ecdsa_secp256r1_sha256`, source
+`openssl_handshake_transcript` — confirms C0 negotiates X25519 + ECDSA-P256.
+
+**C0 W1** (`results/raw/2026-10-02-C0-W1-R10.json`): 50 attempts, 50
+aborted_pre_finished, 0 completed, 0 errors, duration 2.858 s; server_cpu
+0.06 s via pidstat, 0.0012 CPU-s/attempt; RX 44450 / TX 49897 bytes via
+tcpdump, 889.0 / 997.94 bytes-per-attempt; negotiated fields null where no
+completed negotiation exists (null, never fabricated). Server logs show
+`unexpected eof while reading`, confirming ClientHello sent and abort
+before Finished; no completed handshake relabeled as abort.
+
+**Integrity gate:** denominator = all 50 bounded attempts in both streams;
+missing values null, never zero; measurement_status measured/measured/
+observed in both; 96/96 tests pass; cleanup verified (no containers, no
+pcap/pidstat/keylog artefacts, no runtime processes). No cryptographic,
+statistical, or C0–C4 ordering claims made. **Full Phase 5 campaign remains
+NOT authorized by this entry.**
+
+### P5-002 — Phase 5 full campaign (C0–C4 × W0,W1 × 3 trials) PASSED (2026-10-02)
+Matrix: 5 configs × 2 workloads × 3 trials = 30 trials, plus 2 pilot trials.
+Configs `config/c0–c4_experiment.yaml` (max_attempts 1000, max_duration_seconds 30,
+concurrency 1, target 127.0.0.1:4433, D0, fresh_keypair), driven by
+`scripts/run_phase5.py` through `run_experiment()` with per-config compose files.
+Workload client runs in container with OpenSSL 3.5+ (alpine:3.22), uses
+`openssl s_client` for both W0 and W1. All trials use independent per-config
+`openssl s_client` transcript observations parsed by
+`parse_openssl_handshake_observation` confirming negotiated groups/signatures.
+
+**C0 (X25519 + ECDSA-P256):** W0 mean CPU 0.00155 s/att (516–536 completed);
+W1 mean CPU 0.00121 s/att (561–602 aborted_pre_finished).
+**C1 (ML-KEM-768 + ECDSA-P256):** W0 mean CPU 0.00144 s/att (1000 completed);
+W1 mean CPU 0.00142 s/att (1000 aborted_pre_finished).
+**C2 (X25519 + ML-DSA-65):** W0 mean CPU 0.00291 s/att (1000 completed);
+W1 mean CPU 0.00073 s/att (509–535 aborted_pre_finished).
+**C3 (X25519MLKEM768 + ECDSA-P256):** W0 mean CPU 0.00161 s/att (1000 completed);
+W1 mean CPU 0.00066 s/att (534–539 aborted_pre_finished).
+**C4 (ML-KEM-768 + ML-DSA-65):** W0 mean CPU 0.00294 s/att (1000 completed);
+W1 mean CPU 0.00282 s/att (1000 aborted_pre_finished).
+
+All 32 trials valid (measurement_status measured/measured/observed).
+Analysis module `src/analysis/` produces Figures A–C per `design.md §3/§5`
+with median/mean/std/p95 aggregation. Campaign summary at
+`results/processed/campaign_summary.json`; figures at `results/processed/`.
+96/96 tests pass; cleanup verified (no containers, no pcap/pidstat/keylog
+artefacts, no runtime processes). No cryptographic or statistical claims made.
+Phase 5 COMPLETE — ready for Phase 6 authorization.
+
+### P6-001 — Phase 6 key-reuse experiment (C1 × W1) completed (2026-10-02)
+
+**Matrix:** C1 (ML-KEM-768 + ECDSA-P256) × W1 (controlled_abort) × {fresh_keypair, reused_client_keypair} × 3 trials = 6 trials.
+
+**Results (server CPU-seconds per attempt, mean ± std):**
+- fresh_keypair: 0.001550 ± 0.000016 s/att (n=3)
+- reused_client_keypair: 0.001520 ± 0.000029 s/att (n=3)
+
+**Paired comparison (reused − fresh, by trial index):**
+- Mean Δ: −0.000030 s/att (reused slightly lower)
+- Mean ratio (reused/fresh): 0.981
+- All three measurement streams valid (server_cpu, packets, tls_events)
+
+**Figure D generated** in `results/processed/figure_d.png` and `results/processed/figure_d_paired.png` with median/mean/std/p95 per `design.md §5`.
+
+**Interpretation:** No material difference in server-side processing cost observed between fresh and reused client ML-KEM keypair under C1 × W1. The null result is consistent with the server performing ML-KEM encapsulation (which uses fresh randomness per attempt regardless of keypair reuse). Attacker-side key-generation cost reduction is not measured in this testbed (server CPU only).
+
+**Verification:**
+- 96/96 tests pass
+- All 6 trials valid (measurement_status: measured/measured/observed)
+- Cleanup verified: no containers, no pcap/pidstat/keylog artefacts, no runtime processes
+- Raw results in `results/raw/2026-10-02-C1-W1-R{01,02,03}(-reused).json`
+- Analysis in `results/processed/figures.json` (includes figure_d)
+
+**Decision:** Phase 6 gate PASSED. Negative result on server-side cost difference reported per `tasks.md` Phase 6 gate. Ready for Phase 7 authorization.
+
+## Phase 7 Blocker-Resolution Decisions (2026-10-03)
+
+### D7-001 — D1 minimal C/OpenSSL server for forced HRR with stateless cookie
+**Reason:** OpenSSL 3.5.5 `s_server` CLI supports `-stateless` but cannot force an HRR on every connection. The D1 defense mechanism requires forcing TLS 1.3 HelloRetryRequest with a stateless cookie on demand. **Decision:** Replace the `s_server` CLI for the D1 defense path with a minimal C/OpenSSL TLS server that uses OpenSSL 3.5+ APIs to force HRR where required, leveraging OpenSSL's built-in stateless cookie generation/verification. No custom cryptography is introduced. The existing TLS measurement architecture and provenance of observed TLS events are preserved. CPU instrumentation continues to attach to the actual TLS server process. **Status:** active; D1 implementation pending Phase 7 authorization.
+
+### D7-002 — D2 userspace admission proxy inside TLS-server container
+**Reason:** Kernel-level packet filtering and privileged Docker networking are excluded by project safety boundaries. A userspace proxy avoids additional capabilities while keeping CPU measurement focused on the TLS server. **Decision:** D2 will use a userspace admission proxy running inside the TLS-server container. The proxy listens on port 4433, identifies source IP, applies a bounded per-source connection-rate limit, and forwards accepted connections to the TLS server on port 4434. The proxy does not perform TLS termination, does not modify TLS messages, does not introduce custom cryptography, and requires no additional privileged Docker capability. **Status:** active; D2 implementation pending Phase 7 authorization.
+
+### D7-003 — D2 source admission limit set to 5 connections/second/source IP
+**Reason:** Legitimate client target is 1 request/second; workload is approximately 30–50 attempts/second. A 5/second limit provides bounded headroom for legitimate traffic while throttling the workload. **Decision:** The D2 source admission limit for the Phase 7 evaluation is 5 connections/second/source IP. This is a project experiment parameter, not a universal recommended security threshold. **Status:** active; subject to Phase 7 pilot validation.
+
+### D7-004 — RQ5 RTT measurement via packet-capture timestamps
+**Reason:** TLS 1.3 handshake RTT counts differ between normal (1 RTT) and HRR (2 RTT) paths. Packet-capture timestamps provide ground-truth round-trip evidence independent of wall-clock latency. **Decision:** RQ5 RTT measurement will use packet-capture timestamps to count handshake RTTs: baseline TLS 1.3 ClientHello → ServerHello (1 RTT), HRR path ClientHello → HRR → ClientHello2 → ServerHello (2 RTTs). Legitimate-client wall-clock p50/p95 latency is reported separately and not mixed with packet-level RTT counts. **Status:** active; measurement implementation pending Phase 7 authorization.
+
+## Phase 7 D1 Validation-Path Repair Decisions (2026-10-03)
+
+### D7-005 — Separate in-lab D1 protocol-validation phase (A/B separation)
+**Reason:** The C1×W1×D1 pilot FAILED because the required protocol
+evidence (ClientHello -> HRR+cookie -> ClientHello2+cookie -> ServerHello)
+cannot arise inside a W1-only capture window: W1 aborts pre-Finished, so
+ClientHello2/ServerHello never occur, and the pcap RTT parser therefore
+returns null. Modifying W1 to complete the handshake would corrupt its
+controlled-abort semantics. **Decision:** Add a SEPARATE, bounded D1
+protocol-validation phase (B) that runs one or more FULL TLS 1.3 C1
+handshakes against the actual `d1_server` inside the Docker lab, in its own
+bounded packet-capture window, before the W1 exhaustion measurement (A). B
+uses OpenSSL's own HRR response (no custom crypto) and never contributes to
+A's attempt/CPU/bytes denominator. W1 (A) is unchanged. **Status:** active.
+
+### D7-006 — Explicit in-network client addressing (no host tls-server DNS, no host Python for C1)
+**Reason:** The pilot's legitimate client ran on the host with Python
+`ssl` (OpenSSL 3.0.21, which cannot negotiate ML-KEM-768) and targeted the
+Docker-only service name `tls-server`, which does not resolve from the host;
+both caused failures. **Decision:** Clients that must resolve the lab
+service name (workload, legitimate, D1 validation) run INSIDE the lab
+network (via `docker exec` in the workload-client container) using OpenSSL
+3.5.x, and use the compose service name (`target_host`, default
+`tls-server`). The host is used only for orchestration/readiness
+(`127.0.0.1:<published port>`). Host Python/OpenSSL is never used for a C1
+TLS handshake. **Status:** active.
+
+### D7-007 — `d1_validation` result-schema extension (isolated from A)
+**Reason:** The validation evidence (observed sequence, HRR/cookie/CH2/SH
+flags, RTT) must be recorded without entering the exhaustion denominator
+(`server_cpu_seconds_per_attempt`, `bytes_*_per_attempt`, `attempts`).
+**Decision:** Extend the result record (see `design.md` §2) with a discrete
+`d1_validation` object, present only when validation is enabled. It is
+produced by its own bounded capture window and NEVER contributes to A's
+counters. **Status:** active.
+
+### D7-008 — Legitimate-client contract: handshake completion, not application payload
+**Reason:** The D1 server (by design) sends no application data, so the
+previous `recv()`-based success test could never mark a D1 handshake as
+successful. **Decision:** `run_legitimate_client` defines success as TLS
+handshake COMPLETION (OpenSSL handshake finished / `wrap_socket` returns),
+never as receipt of application payload. When a lab client container is
+available the legitimate handshake runs in-network via OpenSSL 3.5.x (C1
+capable); the host Python path is retained only as a non-C1 fallback. The
+component boundary (`src/legitimate_client`, independent of `src/workload`)
+is preserved. **Status:** active.
+
+### D7-009 — D1 validation phase (Phase B) implemented in controller (2026-10-03)
+**Reason:** The failed D1 pilot (2026-10-03) could not observe the complete
+forced-HRR flow (ClientHello → HRR+cookie → ClientHello2+cookie → ServerHello)
+because W1 workload aborts pre-Finished. Per D7-005/D7-007, a separate
+bounded validation phase was required. **Implementation:** Added Phase B in
+`src/controller/experiment.py:run_experiment()` that runs before the W1
+workload (Phase A) when `defense == "D1"` and `validation_handshakes > 0`.
+Phase B: (1) starts a dedicated packet-capture window; (2) runs the configured
+number of full TLS 1.3 handshakes via `run_in_network_handshake()` (OpenSSL
+3.5.x in-network); (3) parses each transcript with `parse_d1_validation_transcript()`;
+(4) stops the validation capture and parses pcap with `parse_d1_handshake_flow()`;
+(5) builds `d1_validation` result object per `design.md §2` schema.
+**Boundary enforcement:** Validation traffic never enters W1 `attempts`,
+`server_cpu_seconds_per_attempt`, `bytes_received_per_attempt`,
+`bytes_sent_per_attempt`, or `tls_events` denominator. Legitimate client
+now uses in-network path when container available. **Tests:** Added
+`tests/test_d1_validation_integration.py` with 8 unit tests verifying:
+validation runs before workload; disabled for non-D1/zero handshakes; excluded
+from W1 denominator; `d1_validation` populated per schema; failure not
+fabricated; W1 remains `controlled_abort`. **Status:** active; pilot NOT rerun.
+
+### D7-010 — D1 mechanism resolved: adopt OpenSSL s_server -stateless CLI path (2026-10-04)
+**Reason:** The custom C/OpenSSL `SSL_stateless()` D1 server (`d1_server.c`)
+consistently failed with `SSL_R_INTERNAL_ERROR` in `tls_construct_stoc_cookie`
+when using ML-KEM-768, in both OpenSSL 3.5.5 and 3.5.9. The OpenSSL CLI
+`openssl s_server -stateless` path was empirically verified to produce the
+D1 HRR flow when the client deliberately creates a key-share mismatch.
+**Decision:** Abandon the custom `SSL_stateless()` C server as the
+D1 implementation. Use `openssl s_server -stateless` as the D1 server.
+
+**D1 mechanism:**
+- Use OpenSSL 3.5.x `openssl s_server -stateless`.
+- Do NOT use the custom programmatic `SSL_stateless()` server as the D1 implementation.
+
+**D1 trigger:**
+- The server is configured with MLKEM768 as the preferred group.
+- The validation/workload client advertises supported groups including: X25519, MLKEM768
+- The initial ClientHello sends an X25519 key share.
+- Because MLKEM768 is supported but its key share was not initially sent, OpenSSL produces the TLS 1.3 HelloRetryRequest requesting MLKEM768.
+
+**D1 cookie — CORRECTED (2026-10-04):**
+- The stateless TLS 1.3 cookie extension (RFC 8446 §4.2.2) is OpenSSL's built-in `s_server -stateless` mechanism.
+- **Empirically, for ML-KEM-768 in OpenSSL 3.5.5 and 3.5.9, the cookie extension is NOT emitted in the HRR and NOT echoed in ClientHello2.**
+- Do not implement custom cookie generation, verification, or cryptographic logic.
+- `cookie_observed = false` is a legitimate measured outcome, not missing data.
+
+**Empirical feasibility evidence:**
+- OpenSSL 3.5.5: HRR flow verified (ClientHello → HRR with RFC8446 special random → HRR key_share=MLKEM768 → ClientHello2 with MLKEM768 key_share → ServerHello MLKEM768 → completed TLS 1.3 handshake). Cookie extension: NOT observed.
+- OpenSSL 3.5.9: HRR flow verified (same sequence). Cookie extension: NOT observed.
+- The initial ClientHello was independently verified to advertise both X25519 and MLKEM768 while carrying only X25519 in key_share.
+
+**D1 measurement boundary:**
+- The existing experiment controller and instrumentation remain responsible for: CPU measurement, packet measurement, TLS event observation, bounded attempt accounting, denominator definition, cleanup.
+- Do NOT move measurement responsibility into the s_server wrapper.
+- Do NOT fabricate TLS events from configuration.
+- Preserve the existing null-not-zero measurement semantics.
+
+**D1 validation:**
+- Keep the already-designed Phase B D1 validation separate from Phase A measurement.
+- Phase B validation handshakes must not contribute to: W1 attempt denominator, CPU/attempt denominator, bytes/attempt denominator, campaign measurements.
+- Phase A remains the actual bounded W1 controlled-abort measurement.
+
+**Custom SSL_stateless server:**
+- Explicitly mark the current custom `SSL_stateless()` D1 server implementation as ABANDONED/REJECTED for this project.
+- It must not remain as an alternate D1 mechanism.
+- Do not continue debugging or extending it.
+- Preserve its historical failure evidence where appropriate.
+
+**D2/D3:**
+- No design change.
+- No implementation change unless strictly required by the minimal D1 topology change.
+- Do not redesign D2 or D3.
+
+**Supersedes earlier flawed CLI diagnostic:**
+The corrected CLI test supersedes the earlier flawed CLI diagnostic, because the corrected client configuration actually demonstrated:
+    supported_groups = X25519, MLKEM768
+    initial key_share = X25519
+Do not claim that `-stateless` forces HRR for every arbitrary ClientHello.
+State accurately that the experiment deliberately creates the key-share mismatch required to trigger HRR.
+
+### D7-011 — D1 cookie scope corrected: HRR without cookie for ML-KEM-768 (2026-10-04)
+**Reason:** The latest empirical investigation (manual `openssl s_client -msg -state` transcript analysis in the Docker lab with OpenSSL 3.5.9) established that the OpenSSL 3.5.x `s_server -stateless` CLI does not emit the stateless cookie extension (RFC 8446 §4.2.2, extension type 44) in the HelloRetryRequest when the server's preferred group is ML-KEM-768, nor does the client echo a cookie in ClientHello2. The HRR mechanism itself works correctly (special random observed, MLKEM768 key_share requested, ClientHello2 with MLKEM768 key_share, ServerHello with MLKEM768, handshake completes).
+**Decision:** Correct all six source-of-truth files to reflect that D1 for PQ-TLS (ML-KEM-768) is an HRR-based mechanism with `cookie_observed = false`. The originally intended stateless HRR-cookie defense was not realized for ML-KEM-768 using the tested OpenSSL 3.5.x path. The custom `SSL_stateless()` C implementation remains abandoned. Do not implement custom cookie cryptography. Do not claim PQ-TLS HRR-cookie mitigation was experimentally demonstrated.
+**Impact:** RQ4 (Admission control) and RQ5 (Availability trade-off) must be evaluated with the measured implementation (HRR without cookie) rather than the intended defense (HRR + stateless cookie). The distinction is mandatory in all analysis and reporting.
+**Status:** Active; supersedes the cookie claim in D7-010.

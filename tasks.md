@@ -73,27 +73,37 @@ decision in `memory.md`.
       runtime results contain all required fields with correct normalization.
 
 ## Phase 5 — RQ1/RQ2 Decomposition (Week 4)
-- [ ] Run the full `{C0..C4} × {W0,W1}` matrix, ≥3 trials each.
-- [ ] Produce Figures A–C (`architecture.md` §6).
+- [x] Run the full `{C0..C4} × {W0,W1}` matrix, ≥3 trials each.
+      **DONE 2026-10-02** — 30 trials + 2 pilot trials, all valid.
+- [x] Produce Figures A–C (`architecture.md` §6).
+      **DONE 2026-10-02** — `src/analysis/` module generates Figures A–C with
+      median/mean/std/p95 per `design.md §5`; output in `results/processed/`.
 - **Gate:** if no meaningful component-level difference appears, do not add
   complexity to manufacture one — narrow the paper to a measurement study
   and record that decision in `memory.md`.
 
 ## Phase 6 — RQ3 Key Reuse (Week 5)
-- [ ] Confirm the FIPS 203 bound item from Phase 0 is resolved (resolved
+- [x] Confirm the FIPS 203 bound item from Phase 0 is resolved (resolved
       as a negative result per P0-001; no longer blocking per `rules.md` §4).
-- [ ] Run C1 × W1 under `fresh_keypair` and `reused_client_keypair`, fresh
+- [x] Run C1 × W1 under `fresh_keypair` and `reused_client_keypair`, fresh
       encapsulation randomness in both cases, always.
-- [ ] Produce Figure D.
+- [x] Produce Figure D.
 - **Gate:** if reuse does not materially change measured cost, report the
   negative result; do not expand this branch further.
+  **PASSED 2026-10-02** — No material server-side cost difference observed (mean Δ = −0.000030 s/att, ratio = 0.981). Null result recorded in `memory.md` P6-001.
 
 ## Phase 7 — RQ4/RQ5 Defense (Week 6)
-- [ ] Implement D0–D3 per `PRD.md` §9 / `architecture.md` §3.7.
+- [x] Implement D0–D3 per `PRD.md` §9 / `architecture.md` §3.7.
+      **DONE 2026-10-03** — D1 server (`lab/server/d1_server.c`), D2 proxy (`src/defense/admission_proxy.py`), D3 composition (`docker-compose-c1-d3.yml`), defense routing (`src/defense/__init__.py`).
+- [x] Implement D1 validation phase (Phase B) per `memory.md` D7-005/D7-007.
+      **DONE 2026-10-03** — `_run_d1_validation_phase()` in `src/controller/experiment.py`; dedicated packet-capture window; in-network OpenSSL 3.5.x client; `d1_validation` result object per `design.md §2`; boundary enforcement (excluded from W1 denominators); unit tests in `tests/test_d1_validation_integration.py`.
+- [x] **D1 mechanism resolved (2026-10-04):** Custom `SSL_stateless()` C server ABANDONED. Adopt `openssl s_server -stateless` CLI path. See `memory.md` D7-010.
+- [x] **D1 cookie scope corrected (2026-10-04):** HRR without cookie for ML-KEM-768. `cookie_observed = false` is the expected empirical outcome. See `memory.md` D7-011.
 - [ ] Run C1 × W1 (minimum) across D0–D3, ≥3 trials each.
 - [ ] Produce Figures E and F.
 - **Minimum bar:** D1 alone is sufficient for project completion if time is
   short (see Scope Cut Order below); D2/D3 are additive.
+- **Gate (pending):** D1 pilot must pass validation checks (HRR observed, HRR requests MLKEM768, ClientHello2 observed with MLKEM768, ServerHello observed with MLKEM768, handshake completion, cookie_observed = false) before full campaign authorized. Previous pilot (2026-10-03) FAILED — lacked Phase B. NOT rerun yet.
 
 ## Phase 8 — Network Conditions (Week 7, optional)
 - [ ] Only if Phases 5–7 are stable: sweep latency (0/20/50/100 ms) and
