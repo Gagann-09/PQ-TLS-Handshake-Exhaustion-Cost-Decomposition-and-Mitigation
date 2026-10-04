@@ -1,0 +1,55 @@
+# C1 × W1 × D3 — Combined: D1 (Stateless Cookie) + D2 (Source Admission)
+# Proxy on 4433 -> D1 Server (openssl s_server -stateless) on 4434
+# Per D7-010: custom SSL_stateless() C server ABANDONED; use CLI path
+# Single container with both processes (PID 1 = D1 server measured, PID 2+ = proxy)
+# D1 server configured with MLKEM768 as preferred group.
+# Client must offer X25519:MLKEM768 in supported_groups with X25519 key_share to trigger HRR.
+
+services:
+  tls-server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.d1-stateless
+    command: >
+      s_server -stateless -tls1_3 -groups MLKEM768
+      -sigalgs ecdsa_secp256r1_sha256
+      -cert /certs/server.crt -key /certs/server.key
+      -port 4434 -www
+    environment:
+      - D1_SERVER_PORT=4434
+    ports:
+      - "4434:4434"
+    volumes:
+      - ../certs:/certs:ro
+    networks:
+      - lab-network
+    restart: unless-stopped
+
+  admission-proxy:
+    build:
+      context: ../../
+      dockerfile: lab/server/Dockerfile.proxy
+    ports:
+      - "4433:4433"
+    networks:
+      - lab-network
+    depends_on:
+      - tls-server
+    restart: unless-stopped
+
+  workload-client:
+    image: alpine:3.22
+    command: sh -c "apk add --no-cache python3 openssl && tail -f /dev/null"
+    volumes:
+      - ../certs:/certs:ro
+      - ../../src:/src:ro
+      - ../../scripts:/scripts:ro
+    networks:
+      - lab-network
+    depends_on:
+      - admission-proxy
+    restart: unless-stopped
+
+networks:
+  lab-network:
+    driver: bridge

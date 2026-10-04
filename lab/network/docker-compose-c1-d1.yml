@@ -1,0 +1,40 @@
+# C1 × W1 × D1 — Stateless Cookie (HelloRetryRequest)
+# D1 Server listens directly on 4433 (canonical target port)
+# Uses OpenSSL s_server -stateless CLI (per D7-010; custom SSL_stateless() server ABANDONED)
+# Server configured with MLKEM768 as preferred group.
+# Client must offer X25519:MLKEM768 in supported_groups with X25519 key_share to trigger HRR.
+
+services:
+  tls-server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile.d1-stateless
+    command: >
+      s_server -stateless -tls1_3 -groups MLKEM768
+      -sigalgs ecdsa_secp256r1_sha256
+      -cert /certs/server.crt -key /certs/server.key
+      -port 4433 -www
+    ports:
+      - "4433:4433"
+    volumes:
+      - ../certs:/certs:ro
+    networks:
+      - lab-network
+    restart: unless-stopped
+
+  workload-client:
+    image: alpine:3.22
+    command: sh -c "apk add --no-cache python3 openssl && tail -f /dev/null"
+    volumes:
+      - ../certs:/certs:ro
+      - ../../src:/src:ro
+      - ../../scripts:/scripts:ro
+    networks:
+      - lab-network
+    depends_on:
+      - tls-server
+    restart: unless-stopped
+
+networks:
+  lab-network:
+    driver: bridge

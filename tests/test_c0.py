@@ -62,6 +62,8 @@ class TestC0WorkloadModes:
                 mode="invalid_mode",
                 max_attempts=1,
                 max_duration_seconds=1,
+                groups=[],
+                sigalgs=[],
             ))
 
 

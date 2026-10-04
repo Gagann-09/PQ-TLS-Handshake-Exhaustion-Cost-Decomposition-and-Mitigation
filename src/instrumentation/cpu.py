@@ -40,6 +40,7 @@ class CpuSamplingSession:
 
     container_name: str
     interval: float
+    server_process_name: str = "openssl s_server"
     pid: int = -1
     proc: "subprocess.Popen | None" = None
     started: bool = False
@@ -47,8 +48,16 @@ class CpuSamplingSession:
     error: str | None = None
 
 
-def _cmdline_is_openssl_s_server(cmdline: bytes) -> bool:
-    """True when cmdline is the actual openssl s_server process, not a shell wrapper."""
+def _cmdline_is_tls_server(cmdline: bytes, server_process_name: str) -> bool:
+    """True when cmdline matches the expected TLS server process, not a shell wrapper.
+
+    Args:
+        cmdline: Raw cmdline from /proc/<pid>/cmdline
+        server_process_name: Expected process name, e.g., "openssl s_server" or "d1_server"
+
+    Returns:
+        True if the process matches the expected server, False otherwise.
+    """
     if not cmdline:
         return False
     parts = cmdline.split(b"\x00")
@@ -57,9 +66,16 @@ def _cmdline_is_openssl_s_server(cmdline: bytes) -> bool:
     if not parts:
         return False
     exe = parts[0].decode("utf-8", errors="replace")
-    if not (exe == "openssl" or exe.endswith("/openssl")):
-        return False
-    return b"s_server" in parts[1:]
+
+    if server_process_name == "openssl s_server":
+        if not (exe == "openssl" or exe.endswith("/openssl")):
+            return False
+        return b"s_server" in parts[1:]
+    elif server_process_name == "d1_server":
+        return exe == "d1_server" or exe.endswith("/d1_server")
+    else:
+        # Generic fallback: match executable name
+        return exe == server_process_name or exe.endswith(f"/{server_process_name}")
 
 
 def _list_proc_pids(container_name: str, timeout: float) -> list[int]:
@@ -98,18 +114,27 @@ def _read_proc_cmdline(container_name: str, pid: int, timeout: float) -> bytes |
         return None
 
 
-def find_server_pid(container_name: str, timeout: float = 10.0) -> int | None:
-    """Find the openssl s_server process PID inside the container.
+def find_server_pid(
+    container_name: str,
+    timeout: float = 10.0,
+    server_process_name: str = "openssl s_server",
+) -> int | None:
+    """Find the TLS server process PID inside the container.
 
     Inspects /proc cmdlines so a shell wrapper that merely mentions
-    ``openssl s_server`` in its ``-c`` string is not mistaken for the server.
+    the server process in its ``-c`` string is not mistaken for the server.
     Returns None if the process cannot be unambiguously identified.
+
+    Args:
+        container_name: Docker container name/ID
+        timeout: Timeout for docker exec commands
+        server_process_name: Expected server process, e.g., "openssl s_server" or "d1_server"
     """
     try:
         matches: list[int] = []
         for pid in _list_proc_pids(container_name, timeout):
             cmdline = _read_proc_cmdline(container_name, pid, timeout)
-            if cmdline is not None and _cmdline_is_openssl_s_server(cmdline):
+            if cmdline is not None and _cmdline_is_tls_server(cmdline, server_process_name):
                 matches.append(pid)
         if len(matches) != 1:
             return None
@@ -118,10 +143,15 @@ def find_server_pid(container_name: str, timeout: float = 10.0) -> int | None:
         return None
 
 
-def verify_server_pid(container_name: str, pid: int, timeout: float = 10.0) -> bool:
-    """Verify that the given PID is actually the openssl s_server process."""
+def verify_server_pid(
+    container_name: str,
+    pid: int,
+    timeout: float = 10.0,
+    server_process_name: str = "openssl s_server",
+) -> bool:
+    """Verify that the given PID is actually the expected TLS server process."""
     cmdline = _read_proc_cmdline(container_name, pid, timeout)
-    return cmdline is not None and _cmdline_is_openssl_s_server(cmdline)
+    return cmdline is not None and _cmdline_is_tls_server(cmdline, server_process_name)
 
 
 def _parse_pidstat_output(output: str, interval: float) -> CpuSamples:
@@ -194,29 +224,39 @@ def derive_cpu_seconds(samples: CpuSamples, interval: float) -> float:
 def start_cpu_sampling(
     container_name: str,
     interval: float = 1.0,
+    server_process_name: str = "openssl s_server",
 ) -> CpuSamplingSession:
-    """Start background pidstat sampling of the openssl s_server process.
+    """Start background pidstat sampling of the TLS server process.
 
     Non-blocking: pidstat runs continuously until `stop_cpu_sampling` is
     called, so the workload executes within the sampling window. Returns a
     session whose `started` flag is True only if sampling actually began; if
     the server PID cannot be identified (see find_server_pid) or pidstat cannot
     be launched, `started` is False and `error` explains why.
+
+    Args:
+        container_name: Docker container name/ID
+        interval: Sampling interval in seconds (default 1.0)
+        server_process_name: Expected server process, e.g., "openssl s_server" or "d1_server"
     """
-    session = CpuSamplingSession(container_name=container_name, interval=interval)
+    session = CpuSamplingSession(
+        container_name=container_name,
+        interval=interval,
+        server_process_name=server_process_name,
+    )
 
     pid: int | None = None
     pid_lookup_timeout = 10.0
     deadline = time.monotonic() + 45.0
     while time.monotonic() < deadline:
-        pid = find_server_pid(container_name, timeout=pid_lookup_timeout)
+        pid = find_server_pid(container_name, timeout=pid_lookup_timeout, server_process_name=server_process_name)
         if pid is not None:
             break
         time.sleep(0.5)
     if pid is None:
-        session.error = "openssl s_server PID could not be identified"
+        session.error = f"{server_process_name} PID could not be identified"
         return session
-    if not verify_server_pid(container_name, pid):
+    if not verify_server_pid(container_name, pid, server_process_name=server_process_name):
         session.error = "server PID verification failed"
         return session
 
@@ -286,7 +326,7 @@ def stop_cpu_sampling(
         samples=samples,
         cpu_seconds=derive_cpu_seconds(samples, session.interval),
         pid=session.pid,
-        process_name="openssl s_server",
+        process_name=session.server_process_name,
     )
 
 

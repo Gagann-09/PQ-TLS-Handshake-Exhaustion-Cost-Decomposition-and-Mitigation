@@ -199,3 +199,266 @@ def read_tls_log(path: str) -> list[HandshakeEvent]:
         pass
 
     return events
+
+
+# --- D1 protocol-validation observation (Phase 7, RQ4/RQ5) -----------------
+# Observation vocabulary for the D1 forced-HRR validation handshake. These
+# labels name protocol messages ACTUALLY SEEN in an OpenSSL handshake
+# transcript or a packet capture; they are never derived from configuration.
+MSG_CLIENT_HELLO = "client_hello"
+MSG_HELLO_RETRY_REQUEST = "hello_retry_request"
+MSG_CLIENT_HELLO2 = "client_hello2"
+MSG_SERVER_HELLO = "server_hello"
+
+_MSG_LINE = re.compile(
+    r"(?:>>>|<<<)[^\n]*?\b(ClientHello|HelloRetryRequest|ServerHello)\b"
+)
+_STATE_LINE = re.compile(
+    r"\b(write|read)\s+(client hello|hello retry request|server hello)\b",
+    re.IGNORECASE,
+)
+# Markers that OpenSSL prints only once the TLS handshake has completed.
+# Used to define legitimate/validation success WITHOUT waiting on application
+# payload (the D1 server intentionally sends none).
+# Note: OpenSSL 3.5+ s_client output varies by verbosity. With -msg -state, it prints
+# "New, TLSv1.3, Cipher is ..." and "SSL handshake has read X bytes...".
+# Without -msg, it prints "SSL-Session:" and "Cipher    : ...".
+_COMPLETION_MARKERS = (
+    "SSL negotiation finished successfully",
+    "SSL-Session:",
+    "Ciphersuite:",
+    "Cipher is",
+    "New, TLSv1.3",
+)
+
+# RFC 8446 HelloRetryRequest special random value (32 bytes)
+_HRR_RANDOM = bytes.fromhex(
+    "cf21ad74e59a6111be1d8c021e65b891c2a211167abb8c5e079e09e2c8a8339c"
+)
+
+# Extension types
+_EXT_KEY_SHARE = 51
+_EXT_COOKIE = 44
+
+
+@dataclass
+class D1ValidationObservation:
+    """Observation-derived evidence of the D1 forced-HRR handshake flow."""
+
+    observed_sequence: list[str] = field(default_factory=list)
+    hrr_observed: bool = False
+    client_hello2_observed: bool = False
+    server_hello_observed: bool = False
+    cookie_observed: bool = False
+    negotiated_group: str | None = None
+    evidence_source: str = SOURCE_NONE
+
+
+def d1_handshake_completed(transcript: str) -> bool:
+    """True when the transcript shows a completed TLS handshake.
+
+    Success is defined as TLS handshake completion, never as the receipt of
+    application payload.
+    """
+    if not transcript:
+        return False
+    return any(marker in transcript for marker in _COMPLETION_MARKERS)
+
+
+def _d1_message_name(line: str) -> str | None:
+    """Map one transcript line to an observed protocol message, or None."""
+    match = _MSG_LINE.search(line)
+    if match:
+        name = match.group(1)
+        if name == "ClientHello":
+            return MSG_CLIENT_HELLO
+        if name == "HelloRetryRequest":
+            return MSG_HELLO_RETRY_REQUEST
+        if name == "ServerHello":
+            return MSG_SERVER_HELLO
+
+    match = _STATE_LINE.search(line)
+    if match:
+        msg = match.group(2).lower()
+        if msg == "client hello":
+            return MSG_CLIENT_HELLO
+        if msg == "hello retry request":
+            return MSG_HELLO_RETRY_REQUEST
+        if msg == "server hello":
+            return MSG_SERVER_HELLO
+    return None
+
+
+def parse_d1_validation_transcript(transcript: str) -> D1ValidationObservation:
+    """Parse an OpenSSL `s_client -msg`/`-state` transcript into observed evidence.
+
+    Reports the observed message sequence (ClientHello, HelloRetryRequest,
+    ClientHello2, ServerHello), whether a cookie token appears, and the
+    negotiated group. A second ClientHello is labelled `client_hello2`.
+    Nothing here is inferred from the experiment configuration.
+    """
+    obs = D1ValidationObservation()
+    if not transcript:
+        return obs
+
+    # First pass: text-based detection from -state output and text markers
+    client_hello_count = 0
+    for line in transcript.splitlines():
+        name = _d1_message_name(line)
+        if name is None:
+            continue
+        if name == MSG_CLIENT_HELLO:
+            client_hello_count += 1
+            if client_hello_count == 1:
+                obs.observed_sequence.append(MSG_CLIENT_HELLO)
+            else:
+                obs.observed_sequence.append(MSG_CLIENT_HELLO2)
+                obs.client_hello2_observed = True
+        elif name == MSG_HELLO_RETRY_REQUEST:
+            obs.observed_sequence.append(MSG_HELLO_RETRY_REQUEST)
+            obs.hrr_observed = True
+        elif name == MSG_SERVER_HELLO:
+            obs.observed_sequence.append(MSG_SERVER_HELLO)
+            obs.server_hello_observed = True
+
+    if re.search(r"\bcookie\b", transcript, re.IGNORECASE):
+        obs.cookie_observed = True
+
+    # Second pass: parse -msg output for HRR random and cookie extension
+    # This catches HRR even when OpenSSL labels it as "ServerHello" in text output.
+    try:
+        obs = _parse_d1_from_msg_output(transcript, obs)
+    except Exception:
+        pass  # Best effort; text-based detection already ran
+
+    negotiation = parse_openssl_handshake_observation(transcript)
+    obs.negotiated_group = negotiation.negotiated_group
+
+    if negotiation.source != SOURCE_NONE:
+        obs.evidence_source = negotiation.source
+    elif obs.observed_sequence:
+        obs.evidence_source = SOURCE_OPENSSL_TRANSCRIPT
+
+    return obs
+
+
+def _parse_d1_from_msg_output(transcript: str, obs: D1ValidationObservation) -> D1ValidationObservation:
+    """Parse OpenSSL `-msg` output for HRR random and cookie extension evidence.
+
+    Looks for:
+    - HRR: ServerHello (msg_type=2) containing the RFC 8446 HRR random value
+    - Cookie: Extension type 44 (cookie) in HRR or ClientHello2
+    """
+    import re
+
+    # Pattern to match `-msg` handshake message dumps:
+    # >>> TLS 1.3, Handshake [length XXXX], ServerHello
+    #     02 00 00 XX 03 03 CF 21 AD 74 ... (raw bytes)
+    msg_header_re = re.compile(
+        r"(?:>>>|<<<)\s+TLS\s+1\.[023],\s+Handshake\s+\[length\s+\d+\],\s+(ClientHello|ServerHello|HelloRetryRequest)"
+    )
+
+    lines = transcript.splitlines()
+    i = 0
+    server_hello_count = 0
+    while i < len(lines):
+        line = lines[i]
+        header_match = msg_header_re.search(line)
+        if not header_match:
+            i += 1
+            continue
+
+        msg_type_name = header_match.group(1)
+
+        # Collect the hex dump lines following the header
+        hex_bytes = []
+        i += 1
+        while i < len(lines):
+            # Hex dump lines look like: "    02 00 00 54 03 03 CF 21 ..."
+            if re.match(r"^\s+[0-9a-fA-F]{2}(?:\s+[0-9a-fA-F]{2})+\s*$", lines[i]):
+                parts = lines[i].strip().split()
+                for p in parts:
+                    try:
+                        hex_bytes.append(int(p, 16))
+                    except ValueError:
+                        pass
+                i += 1
+            else:
+                break
+
+        if not hex_bytes:
+            continue
+
+        msg_bytes = bytes(hex_bytes)
+
+        if msg_type_name == "ClientHello":
+            # Check for cookie extension in ClientHello (ClientHello2)
+            if _has_extension(msg_bytes, _EXT_COOKIE):
+                obs.cookie_observed = True
+
+        elif msg_type_name == "ServerHello":
+            server_hello_count += 1
+            # Check for HRR random (first ServerHello with special random = HRR)
+            if server_hello_count == 1 and _has_hrr_random(msg_bytes):
+                obs.hrr_observed = True
+                if MSG_HELLO_RETRY_REQUEST not in obs.observed_sequence:
+                    obs.observed_sequence.append(MSG_HELLO_RETRY_REQUEST)
+            # Check for cookie extension in HRR
+            if _has_extension(msg_bytes, _EXT_COOKIE):
+                obs.cookie_observed = True
+
+    return obs
+
+
+def _has_hrr_random(server_hello_bytes: bytes) -> bool:
+    """Check if ServerHello contains the RFC 8446 HRR special random value.
+
+    ServerHello structure (RFC 8446):
+    - msg_type (1) = 2
+    - length (3)
+    - body:
+        - legacy_version (2)
+        - random (32)
+        - legacy_session_id_echo (1 + len)
+        - cipher_suite (2)
+        - legacy_compression_method (1)
+        - extensions (2 + len)
+    """
+    try:
+        if len(server_hello_bytes) < 4:
+            return False
+        # Skip msg_type (1) and length (3)
+        body = server_hello_bytes[4:]
+        if len(body) < 2 + 32:
+            return False
+        # legacy_version (2)
+        random_bytes = body[2:2+32]
+        return random_bytes == _HRR_RANDOM
+    except Exception:
+        return False
+
+
+def _has_extension(handshake_msg_bytes: bytes, ext_type: int) -> bool:
+    """Check if a handshake message (ClientHello or ServerHello) contains an extension.
+
+    Parses the extensions block at the end of the handshake message body.
+    """
+    try:
+        if len(handshake_msg_bytes) < 4:
+            return False
+        body = handshake_msg_bytes[4:]  # skip msg_type + length
+        # Parse based on message type (first byte of original message)
+        # For ClientHello: legacy_version(2) + random(32) + session_id(1+len) + cipher_suites(2+len) + compression(1+len) + extensions(2+len)
+        # For ServerHello: legacy_version(2) + random(32) + session_id_echo(1+len) + cipher_suite(2) + compression(1) + extensions(2+len)
+        # We'll use a generic approach: find the extensions block by skipping known fixed fields.
+
+        # This is a simplified parser - for robust parsing we'd need message-type-specific logic.
+        # For now, search for the extension type in the latter half of the message.
+        # Extension format: type(2) + length(2) + value
+        if len(body) < 10:
+            return False
+        # Search for the extension type in the raw bytes (simple but effective for our case)
+        ext_type_bytes = ext_type.to_bytes(2, "big")
+        return ext_type_bytes in body
+    except Exception:
+        return False

@@ -1,0 +1,26 @@
+# C1 PQ Key Establishment — Key Reuse Experiment (Fresh Keypair)
+# ML-KEM-768 + ECDSA-P256, controlled abort, fresh keypair per attempt
+# RQ3: Does reusing the client's ML-KEM keypair change cost?
+# See PRD.md §4 RQ3, rules.md §4, tasks.md Phase 6
+
+experiment_id: 2026-10-02-C1-W1-R01
+server:
+  configuration: C1
+  defense: D0
+workload:
+  mode: controlled_abort
+  key_reuse: fresh_keypair
+  max_attempts: 1000
+  max_duration_seconds: 30
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: tls-server
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 3
+  seed: 42

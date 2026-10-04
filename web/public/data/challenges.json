@@ -1,0 +1,103 @@
+{
+  "challenges": [
+    {
+      "id": "F-01",
+      "title": "TLS Provenance Fabrication",
+      "problem": "Negotiated group/signature algorithm values were fabricated from experiment configuration rather than derived from actual observation.",
+      "investigation": "Forensic review (P4-002) found normalize_tls_event() accepted configuration values, violating provenance requirement (PRD §8.1, architecture.md §3.5).",
+      "resolution": "normalize_tls_event() now takes only NegotiationObservation; configuration never consulted; unobserved fields = null.",
+      "status": "Resolved",
+      "reference": "memory.md P4-002"
+    },
+    {
+      "id": "F-02",
+      "title": "W1 Controlled-Abort Semantics",
+      "problem": "W1 workload was completing full handshakes then mislabeling as aborted_pre_finished.",
+      "investigation": "State machine analysis showed openssl s_client -brief with timeout was not reliably aborting pre-Finished.",
+      "resolution": "Implemented do_handshake_on_connect=False with non-blocking socket; completed handshake raises (→ error), never aborted_pre_finished.",
+      "status": "Resolved",
+      "reference": "memory.md P4-002"
+    },
+    {
+      "id": "F-03",
+      "title": "Packet Capture Lifecycle",
+      "problem": "tcpdump capture blocked indefinitely; no explicit start/stop; timeout used as normal termination mechanism.",
+      "investigation": "Blocking capture process could not be cleanly stopped; failed captures returned zero bytes silently.",
+      "resolution": "start_packet_capture()/stop_packet_capture() with SIGINT; timeout = emergency backstop only; cleanup on both success and failure; failed = unavailable not zero.",
+      "status": "Resolved",
+      "reference": "memory.md P4-002"
+    },
+    {
+      "id": "F-04",
+      "title": "Controller Integration",
+      "problem": "CPU/bytes fabricated as constants; missing measurements reported as zero; TLS events config-derived.",
+      "investigation": "Integration testing revealed result schema violations: measurement_status missing, null-not-zero not enforced.",
+      "resolution": "Full null-not-zero schema; measurement_status per stream (measured|unavailable|failed); provenance-locked TLS events; zero-attempts guarded.",
+      "status": "Resolved",
+      "reference": "memory.md P4-002"
+    },
+    {
+      "id": "F-05",
+      "title": "CPU PID Ambiguity",
+      "problem": "Shell wrapper process matched 'openssl s_server' in /proc/*/cmdline, causing pidstat to sample wrong PID.",
+      "investigation": "ps -ef inside container showed both shell wrapper and actual openssl process; /proc/*/cmdline inspection required.",
+      "resolution": "Require exact 'openssl' executable + 's_server' in args; reject shell wrappers; verified at runtime (P4-003).",
+      "status": "Resolved",
+      "reference": "memory.md P4-003"
+    },
+    {
+      "id": "D7-010",
+      "title": "Custom SSL_stateless() Server Abandoned",
+      "problem": "Custom C/OpenSSL SSL_stateless() server consistently failed with SSL_R_INTERNAL_ERROR in tls_construct_stoc_cookie for ML-KEM-768 (both 3.5.5 and 3.5.9).",
+      "investigation": "Extended debugging of cookie callback implementation; OpenSSL internal error during stateless cookie construction for PQ groups.",
+      "resolution": "Abandoned custom server; adopted openssl s_server -stateless CLI path which empirically produces HRR via key-share mismatch.",
+      "status": "Resolved (abandoned)",
+      "reference": "memory.md D7-010"
+    },
+    {
+      "id": "D7-011",
+      "title": "D1 Cookie Scope Corrected — HRR Without Cookie",
+      "problem": "The intended stateless HRR-cookie defense (RFC 8446 §4.2.2) was not realized for ML-KEM-768.",
+      "investigation": "Manual openssl s_client -msg -state transcript analysis in Docker lab with OpenSSL 3.5.9 confirmed: HRR special random observed, MLKEM768 key_share requested, ClientHello2 with MLKEM768 key_share, ServerHello completed — but cookie extension (type 44) absent in HRR and ClientHello2.",
+      "resolution": "Documented as measured outcome: D1 = HRR without cookie for ML-KEM-768; cookie_observed=false is legitimate measured data, not missing data. RQ4/RQ5 evaluated with measured implementation.",
+      "status": "Measured limitation",
+      "reference": "memory.md D7-011"
+    },
+    {
+      "id": "D7-005",
+      "title": "Phase B Validation — Separate Capture Window",
+      "problem": "W1 aborts pre-Finished, so ClientHello2/ServerHello never occur in W1 capture window; RTT parser returns null.",
+      "investigation": "D1 validation requires observing full forced-HRR flow (CH→HRR→CH2→SH), but W1 by definition aborts early.",
+      "resolution": "Added separate bounded D1 validation phase (Phase B) that runs full TLS 1.3 handshakes against D1 server in dedicated pcap window before W1 measurement (Phase A). Phase B excluded from all W1 denominators.",
+      "status": "Resolved",
+      "reference": "memory.md D7-005, D7-007, D7-009"
+    },
+    {
+      "id": "D7-006",
+      "title": "In-Network Client Addressing",
+      "problem": "Legitimate client ran on host with Python ssl (OpenSSL 3.0.21, cannot negotiate ML-KEM-768) targeting Docker service name 'tls-server' (unresolvable from host).",
+      "investigation": "Host Python OpenSSL too old for PQ; Docker service names only resolve inside lab network.",
+      "resolution": "Clients requiring lab service resolution run INSIDE lab network via docker exec with OpenSSL 3.5.x; host used only for orchestration/readiness on 127.0.0.1:<published port>.",
+      "status": "Resolved",
+      "reference": "memory.md D7-006"
+    },
+    {
+      "id": "Phase6-KeypairReuse",
+      "title": "Phase 6 ML-KEM Keypair Reuse Not Implemented",
+      "problem": "openssl s_client does not support reusing a pre-generated ML-KEM keypair across connections via CLI.",
+      "investigation": "OpenSSL 3.5+ s_client generates fresh keypair per connection; no CLI mechanism to inject pre-generated keypair. True reuse requires custom C client using OpenSSL API directly.",
+      "resolution": "Documented fallback to fresh keypair per attempt in both 'fresh' and 'reused' conditions. Null result on server-side cost difference reflects fresh keypairs in both cases. RQ3 remains unresolved for true keypair reuse.",
+      "status": "Limitation (not implemented)",
+      "reference": "memory.md P6-001, src/workload/client.py"
+    },
+    {
+      "id": "RTT-Limitation",
+      "title": "RTT Extraction Limitation",
+      "problem": "Packet-capture RTT parsing implemented for Phase 7 validation only; main campaign reports wall-clock latency only.",
+      "investigation": "TLS handshake message parsing from pcap for RTT counting (1 RTT vs 2 RTT) requires reliable message identification; implemented for D1 validation phase.",
+      "resolution": "RTT available for D1 validation (2 RTT observed for HRR path); not available for main Phase 5/6 campaign. Wall-clock p50/p95 reported instead.",
+      "status": "Partial",
+      "reference": "memory.md D7-004"
+    }
+  ]
+}

@@ -44,12 +44,14 @@ class TestC2WorkloadModes:
     def test_w0_mode_supported(self):
         """W0 (normal completion) should be a valid mode."""
         from src.workload.client import generate_attempts
-        assert True  # Mode validation happens in generate_attempts
+        list(generate_attempts(host="tls-server", port=4433, mode="normal_completion",
+                               max_attempts=1, max_duration_seconds=1, groups=[], sigalgs=[]))
 
     def test_w1_mode_supported(self):
         """W1 (controlled abort) should be a valid mode."""
         from src.workload.client import generate_attempts
-        assert True  # Mode validation happens in generate_attempts
+        list(generate_attempts(host="tls-server", port=4433, mode="controlled_abort",
+                               max_attempts=1, max_duration_seconds=1, groups=[], sigalgs=[]))
 
     def test_invalid_mode_rejected(self):
         """Invalid modes should be rejected."""
@@ -61,6 +63,8 @@ class TestC2WorkloadModes:
                 mode="invalid_mode",
                 max_attempts=1,
                 max_duration_seconds=1,
+                groups=[],
+                sigalgs=[],
             ))
 
 

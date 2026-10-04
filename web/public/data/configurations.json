@@ -1,0 +1,21 @@
+{
+  "configurations": [
+    {"id": "C0", "key_establishment": "X25519", "authentication": "ECDSA-P256", "purpose": "Classical baseline"},
+    {"id": "C1", "key_establishment": "ML-KEM-768", "authentication": "ECDSA-P256", "purpose": "Isolates PQ key-establishment cost (RQ1)"},
+    {"id": "C2", "key_establishment": "X25519", "authentication": "ML-DSA-65", "purpose": "Isolates PQ authentication cost (RQ1)"},
+    {"id": "C3", "key_establishment": "X25519+ML-KEM-768 (hybrid)", "authentication": "ECDSA-P256", "purpose": "Hybrid key establishment (RFC 10024)"},
+    {"id": "C4", "key_establishment": "ML-KEM-768", "authentication": "ML-DSA-65", "purpose": "Combined PQ configuration (RQ1, RQ2)"}
+  ],
+  "workload_modes": [
+    {"id": "W0", "name": "normal_completion", "description": "Full TLS 1.3 handshake to completion"},
+    {"id": "W1", "name": "controlled_abort", "description": "Client sends ClientHello, disconnects pre-Finished"}
+  ],
+  "defense_modes": [
+    {"id": "D0", "name": "Baseline", "description": "No admission control"},
+    {"id": "D1", "name": "HRR (no cookie)", "description": "openssl s_server -stateless; key-share mismatch triggers HRR; cookie_observed=false"},
+    {"id": "D2", "name": "Source Budget", "description": "Userspace proxy, token bucket 5 tokens @ 5/sec refill"},
+    {"id": "D3", "name": "Combined", "description": "D2 proxy → D1 stateless server"}
+  ],
+  "openssl_version": "3.5.5+ (default provider, native ML-KEM-768, ML-DSA-65, X25519MLKEM768 support)",
+  "all_negotiated": true
+}

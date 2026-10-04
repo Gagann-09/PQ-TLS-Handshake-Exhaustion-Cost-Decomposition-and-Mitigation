@@ -12,7 +12,7 @@ from typing import Final
 # Allowlist: localhost, 127.0.0.1, ::1, Docker service names resolvable only
 # inside the lab network. Any destination outside this list must fail closed.
 ALLOWED_HOSTS: Final[frozenset[str]] = frozenset({"localhost", "127.0.0.1", "::1"})
-ALLOWED_DOCKER_SERVICES: Final[frozenset[str]] = frozenset({"tls-server"})
+ALLOWED_DOCKER_SERVICES: Final[frozenset[str]] = frozenset({"tls-server", "admission-proxy"})
 
 # Hard ceilings — these are project safety limits, NOT cryptographic bounds.
 # An experiment config may only LOWER these, never raise them.

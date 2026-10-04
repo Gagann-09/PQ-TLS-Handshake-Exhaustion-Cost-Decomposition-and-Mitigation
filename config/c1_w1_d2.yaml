@@ -1,0 +1,25 @@
+# C1 × W1 × D2 — Source Admission Budget
+# ML-KEM-768 + ECDSA-P256, Controlled Abort, D2 Defense
+
+experiment_id: c1_w1_d2_r01
+server:
+  configuration: C1
+  defense: D2
+  admission_limit: 5  # connections per second per source IP
+workload:
+  mode: controlled_abort
+  key_reuse: fresh_keypair
+  max_attempts: 1000
+  max_duration_seconds: 30
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: tls-server
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 3
+  seed: 42

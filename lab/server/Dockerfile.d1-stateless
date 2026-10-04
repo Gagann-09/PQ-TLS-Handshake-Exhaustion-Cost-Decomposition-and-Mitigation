@@ -1,0 +1,25 @@
+# D1 Server Image — OpenSSL s_server -stateless (CLI path)
+# Build context: lab/server (from docker-compose-c1-d1.yml)
+# Replaces the custom C/OpenSSL SSL_stateless() server (ABANDONED per D7-010)
+#
+# The server is configured with MLKEM768 as the preferred group.
+# The validation/workload client MUST advertise supported groups including
+# both X25519 and MLKEM768, with X25519 as the initial key share.
+# This key-share mismatch triggers OpenSSL's HRR + stateless cookie flow.
+
+FROM alpine:3.22
+
+# Install OpenSSL (provides s_server with -stateless support), certificates, and sysstat (for pidstat)
+RUN apk add --no-cache openssl ca-certificates sysstat
+
+# Verify OpenSSL version supports ML-KEM and -stateless
+RUN openssl version && openssl s_server -help 2>&1 | grep -q stateless
+
+# The server command is provided at runtime via docker-compose command:
+# openssl s_server -stateless -tls1_3 -groups MLKEM768 -sigalgs ecdsa_secp256r1_sha256 -cert /certs/server.crt -key /certs/server.key -port 4433 -www
+# Certificates are provided at runtime by the compose volume mount (../certs:/certs:ro)
+
+EXPOSE 4433
+
+# Default entrypoint - overridden by docker-compose command
+ENTRYPOINT ["openssl"]

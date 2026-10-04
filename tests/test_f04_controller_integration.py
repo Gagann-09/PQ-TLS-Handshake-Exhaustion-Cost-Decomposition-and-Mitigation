@@ -5,20 +5,20 @@ instrumentation (not fabricated constants), and that unavailable/failed
 streams are represented as null + status rather than as zero.
 """
 from dataclasses import replace
+import json
+import subprocess
 
 import pytest
 
 from src.controller import experiment
 from src.controller.config import load_config
+from src.defense import ServerConfig
 from src.legitimate_client import client as legit_client
 from src.workload import client as workload_client
 
 
-class _Attempt:
-    def __init__(self, outcome, error=None):
-        self.timestamp = 0.0
-        self.outcome = outcome
-        self.error = error
+def _Attempt(outcome, error=None):
+    return {"timestamp": 0.0, "outcome": outcome, "error": error}
 
 
 class _CpuSession:
@@ -69,6 +69,40 @@ def _patch_common(monkeypatch):
         experiment, "_resolve_container_id", lambda f, service="tls-server": "cid"
     )
     monkeypatch.setattr(legit_client, "run_legitimate_client", lambda **k: _Legit())
+    # Mock docker exec for workload client
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _mock_docker_exec())
+    # Mock the defense apply function
+    from src.defense import ServerConfig
+    monkeypatch.setattr(
+        experiment, "apply_defense", 
+        lambda d, c: ServerConfig(
+            compose_file="fake-compose.yml",
+            target_port=4433,
+            server_process_name="openssl s_server"
+        )
+    )
+
+
+def _mock_docker_exec():
+    """Return a fake CompletedProcess with workload client JSON output."""
+    class _Result:
+        returncode = 0
+        stdout = json.dumps({"attempts": [
+            {"outcome": "completed", "error": None},
+            {"outcome": "aborted_pre_finished", "error": None},
+            {"outcome": "error", "error": "boom"},
+        ]})
+        stderr = ""
+    return _Result()
+
+
+def _mock_docker_exec_empty():
+    """Return a fake CompletedProcess with zero attempts."""
+    class _Result:
+        returncode = 0
+        stdout = json.dumps({"attempts": []})
+        stderr = ""
+    return _Result()
 
 
 def test_result_has_required_fields_and_genuine_values(monkeypatch, tmp_path):
@@ -85,7 +119,7 @@ def test_result_has_required_fields_and_genuine_values(monkeypatch, tmp_path):
         ),
     )
     monkeypatch.setattr(
-        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0: _CpuSession()
+        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0, server_process_name="openssl s_server": _CpuSession()
     )
     monkeypatch.setattr(
         experiment.cpu_instr, "stop_cpu_sampling", lambda s: _CpuResult(1.5)
@@ -93,14 +127,14 @@ def test_result_has_required_fields_and_genuine_values(monkeypatch, tmp_path):
     monkeypatch.setattr(
         experiment.pkt_instr,
         "start_packet_capture",
-        lambda c, port=4433, interface="eth0": _CapSession(),
+        lambda c, port=4433, interface="eth0", ports=None: _CapSession(),
     )
     monkeypatch.setattr(
         experiment.pkt_instr, "stop_packet_capture", lambda s: _CapResult(True, 300, 90)
     )
 
     cfg = replace(load_config("config/c0_experiment.yaml"), experiment_id="TEST-C0-W0-R01")
-    result = experiment.run_experiment(cfg, tmp_path, "lab/network/docker-compose-c0.yml")
+    result = experiment.run_experiment(cfg, tmp_path, "fake-compose.yml")
 
     for field in (
         "attempts",
@@ -143,20 +177,20 @@ def test_tls_events_are_null_not_config_derived(monkeypatch, tmp_path):
         lambda **k: iter([_Attempt("completed"), _Attempt("aborted_pre_finished")]),
     )
     monkeypatch.setattr(
-        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0: _CpuSession()
+        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0, server_process_name="openssl s_server": _CpuSession()
     )
     monkeypatch.setattr(experiment.cpu_instr, "stop_cpu_sampling", lambda s: _CpuResult(2.0))
     monkeypatch.setattr(
         experiment.pkt_instr,
         "start_packet_capture",
-        lambda c, port=4433, interface="eth0": _CapSession(),
+        lambda c, port=4433, interface="eth0", ports=None: _CapSession(),
     )
     monkeypatch.setattr(
         experiment.pkt_instr, "stop_packet_capture", lambda s: _CapResult(True, 10, 20)
     )
 
     cfg = replace(load_config("config/c1_experiment.yaml"), experiment_id="TEST-C1-W0-R01")
-    result = experiment.run_experiment(cfg, tmp_path, "lab/network/docker-compose-c1.yml")
+    result = experiment.run_experiment(cfg, tmp_path, "fake-compose.yml")
 
     # C1 would "expect" MLKEM768 / ecdsa_secp256r1_sha256 — none may appear.
     for event in result["tls_events"]:
@@ -174,13 +208,13 @@ def test_partial_measurement_is_visible_not_zero(monkeypatch, tmp_path):
         started=False, error="openssl s_server PID could not be identified"
     )
     monkeypatch.setattr(
-        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0: failed_cpu
+        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0, server_process_name="openssl s_server": failed_cpu
     )
     monkeypatch.setattr(experiment.cpu_instr, "stop_cpu_sampling", lambda s: None)
     monkeypatch.setattr(
         experiment.pkt_instr,
         "start_packet_capture",
-        lambda c, port=4433, interface="eth0": _CapSession(),
+        lambda c, port=4433, interface="eth0", ports=None: _CapSession(),
     )
     monkeypatch.setattr(
         experiment.pkt_instr,
@@ -189,7 +223,7 @@ def test_partial_measurement_is_visible_not_zero(monkeypatch, tmp_path):
     )
 
     cfg = replace(load_config("config/c0_experiment.yaml"), experiment_id="TEST-C0-W0-R02")
-    result = experiment.run_experiment(cfg, tmp_path, "lab/network/docker-compose-c0.yml")
+    result = experiment.run_experiment(cfg, tmp_path, "fake-compose.yml")
 
     assert result["server_cpu_seconds"] is None
     assert result["server_cpu_seconds_per_attempt"] is None
@@ -203,22 +237,23 @@ def test_partial_measurement_is_visible_not_zero(monkeypatch, tmp_path):
 
 def test_zero_attempts_do_not_divide(monkeypatch, tmp_path):
     _patch_common(monkeypatch)
-    monkeypatch.setattr(workload_client, "generate_attempts", lambda **k: iter([]))
+    # Override the docker exec mock to return empty attempts
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _mock_docker_exec_empty())
     monkeypatch.setattr(
-        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0: _CpuSession()
+        experiment.cpu_instr, "start_cpu_sampling", lambda c, interval=1.0, server_process_name="openssl s_server": _CpuSession()
     )
     monkeypatch.setattr(experiment.cpu_instr, "stop_cpu_sampling", lambda s: _CpuResult(0.0))
     monkeypatch.setattr(
         experiment.pkt_instr,
         "start_packet_capture",
-        lambda c, port=4433, interface="eth0": _CapSession(),
+        lambda c, port=4433, interface="eth0", ports=None: _CapSession(),
     )
     monkeypatch.setattr(
         experiment.pkt_instr, "stop_packet_capture", lambda s: _CapResult(True, 0, 0)
     )
 
     cfg = replace(load_config("config/c0_experiment.yaml"), experiment_id="TEST-C0-W0-R03")
-    result = experiment.run_experiment(cfg, tmp_path, "lab/network/docker-compose-c0.yml")
+    result = experiment.run_experiment(cfg, tmp_path, "fake-compose.yml")
 
     assert result["attempts"] == 0
     assert result["server_cpu_seconds_per_attempt"] is None

@@ -40,6 +40,7 @@ def _session(proc, started=True):
         pcap_path="/tmp/pq_capture_x.pcap",
         interface="eth0",
         port=4433,
+        ports=[4433],
         proc=proc,
         started=started,
         start_time=0.0,

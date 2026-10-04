@@ -28,6 +28,11 @@ class ExperimentConfig:
     target_port: int
     trial_repeats: int
     seed: int
+    # In-network client addressing (Docker service name; memory.md D7-006).
+    client_host: str = "tls-server"
+    # D1 protocol-validation phase (0 disables it; memory.md D7-005/D7-007).
+    validation_handshakes: int = 0
+    validation_timeout_seconds: int = 10
 
 
 def load_config(path: str | Path) -> ExperimentConfig:
@@ -46,6 +51,8 @@ def load_config(path: str | Path) -> ExperimentConfig:
     workload = raw["workload"]
     target = raw["target"]
     trial = raw["trial"]
+    client = raw.get("client") or {}
+    validation = raw.get("validation") or {}
 
     config = ExperimentConfig(
         experiment_id=raw["experiment_id"],
@@ -61,6 +68,9 @@ def load_config(path: str | Path) -> ExperimentConfig:
         target_port=target["port"],
         trial_repeats=trial["repeats"],
         seed=trial["seed"],
+        client_host=client.get("host", "tls-server"),
+        validation_handshakes=int(validation.get("handshakes", 0)),
+        validation_timeout_seconds=int(validation.get("timeout_seconds", 10)),
     )
 
     # Validate against safety limits — fail closed.

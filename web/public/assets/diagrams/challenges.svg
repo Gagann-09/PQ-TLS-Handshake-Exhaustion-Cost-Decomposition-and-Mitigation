@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" width="900" height="600">
+  <rect width="900" height="600" fill="#fafafa"/>
+  
+  <text x="450" y="30" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#1a1a1a">Engineering Journey: Challenges & Resolutions</text>
+  <text x="450" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#5f6368">Documented from project history (memory.md P1-001 through D7-011)</text>
+  
+  <!-- Timeline line -->
+  <line x1="100" y1="80" x2="100" y2="560" stroke="#5f6368" stroke-width="3"/>
+  
+  <!-- Challenge items -->
+  <g transform="translate(100, 80)">
+    <!-- F-01 -->
+    <g transform="translate(0, 0)">
+      <circle cx="0" cy="0" r="10" fill="#1a73e8"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">F-01: TLS Provenance Fabrication</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: negotiated_group/signature_algorithm fabricated from config, not observed</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: normalize_tls_event() now takes only NegotiationObservation; config never consulted; unobserved → null</text>
+    </g>
+    
+    <!-- F-02 -->
+    <g transform="translate(0, 70)">
+      <circle cx="0" cy="0" r="10" fill="#e65100"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#fff3e0" stroke="#e65100" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">F-02: W1 Controlled-Abort Semantics</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: W1 was completing handshakes, then mislabeling as aborted_pre_finished</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: do_handshake_on_connect=False + non-blocking socket; completes → error, never aborted</text>
+    </g>
+    
+    <!-- F-03 -->
+    <g transform="translate(0, 140)">
+      <circle cx="0" cy="0" r="10" fill="#6a1b9a"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">F-03: Packet Capture Lifecycle</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: tcpdump blocked indefinitely; no explicit stop; timeout used as normal termination</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: start/stop with SIGINT; timeout = emergency backstop only; cleanup on success/failure</text>
+    </g>
+    
+    <!-- F-04 -->
+    <g transform="translate(0, 210)">
+      <circle cx="0" cy="0" r="10" fill="#00695c"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#e0f2f1" stroke="#00695c" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">F-04: Controller Integration</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: CPU/bytes fabricated as constants; missing = 0; TLS events config-derived</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: null-not-zero schema; measurement_status per stream; provenance-locked TLS events</text>
+    </g>
+    
+    <!-- F-05 -->
+    <g transform="translate(0, 280)">
+      <circle cx="0" cy="0" r="10" fill="#c62828"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#fce4ec" stroke="#c62828" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">F-05: CPU PID Ambiguity</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: shell wrapper matched 'openssl s_server' in /proc/cmdline; pidstat sampled wrong PID</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: require exact 'openssl' executable + 's_server' in args; reject shell wrappers</text>
+    </g>
+    
+    <!-- D7-010 -->
+    <g transform="translate(0, 350)">
+      <circle cx="0" cy="0" r="10" fill="#2e7d32"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">D7-010: Custom SSL_stateless() Server Abandoned</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: SSL_R_INTERNAL_ERROR in tls_construct_stoc_cookie with ML-KEM-768 (3.5.5 & 3.5.9)</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: adopted openssl s_server -stateless CLI path; HRR works via key-share mismatch</text>
+    </g>
+    
+    <!-- D7-011 -->
+    <g transform="translate(0, 420)">
+      <circle cx="0" cy="0" r="10" fill="#c62828"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#fce4ec" stroke="#c62828" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">D7-011: D1 Cookie Scope Corrected — HRR Without Cookie</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Finding: stateless cookie extension (type 44) NOT emitted for ML-KEM-768 in OpenSSL 3.5.x</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Impact: D1 = HRR without cookie; no DoS-reduction property; measured outcome, not missing data</text>
+    </g>
+    
+    <!-- D7-005 -->
+    <g transform="translate(0, 490)">
+      <circle cx="0" cy="0" r="10" fill="#1a73e8"/>
+      <rect x="30" y="-50" width="750" height="55" rx="4" fill="#e8f0fe" stroke="#1a73e8" stroke-width="1"/>
+      <text x="50" y="-30" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#1a1a1a">D7-005: Phase B Validation — Separate Capture Window</text>
+      <text x="50" y="-15" font-family="system-ui, sans-serif" font-size="10" fill="#3c4043">Problem: W1 aborts pre-Finished → no ClientHello2/ServerHello in pcap; RTT parser returns null</text>
+      <text x="50" y="0" font-family="system-ui, sans-serif" font-size="10" fill="#2e7d32">Resolution: separate bounded D1 validation phase (full handshakes, dedicated pcap, excluded from W1 denominators)</text>
+    </g>
+  </g>
+</svg>

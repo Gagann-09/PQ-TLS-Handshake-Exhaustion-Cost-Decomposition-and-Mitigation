@@ -60,8 +60,8 @@ def test_start_cpu_sampling_installs_sysstat(monkeypatch):
         ensure_calls.append((container_name, tool, package))
         return True
 
-    monkeypatch.setattr(cpu, "find_server_pid", lambda c, timeout=10.0: 1)
-    monkeypatch.setattr(cpu, "verify_server_pid", lambda c, p, timeout=10.0: True)
+    monkeypatch.setattr(cpu, "find_server_pid", lambda c, timeout=10.0, server_process_name="openssl s_server": 1)
+    monkeypatch.setattr(cpu, "verify_server_pid", lambda c, p, timeout=10.0, server_process_name="openssl s_server": True)
     monkeypatch.setattr(
         "src.instrumentation.container.ensure_container_tool", fake_ensure
     )
@@ -72,17 +72,17 @@ def test_start_cpu_sampling_installs_sysstat(monkeypatch):
     assert ensure_calls == [("cid", "pidstat", "sysstat")]
 
 
-def test_cmdline_is_openssl_s_server_accepts_real_process():
+def test_cmdline_is_tls_server_accepts_real_process():
     cmdline = b"openssl\x00s_server\x00-accept\x004433\x00"
-    assert cpu._cmdline_is_openssl_s_server(cmdline) is True
+    assert cpu._cmdline_is_tls_server(cmdline, "openssl s_server") is True
 
 
-def test_cmdline_is_openssl_s_server_rejects_shell_wrapper():
+def test_cmdline_is_tls_server_rejects_shell_wrapper():
     cmdline = (
         b"sh\x00-c\x00apk add --no-cache openssl && "
         b"openssl s_server -accept 4433\x00"
     )
-    assert cpu._cmdline_is_openssl_s_server(cmdline) is False
+    assert cpu._cmdline_is_tls_server(cmdline, "openssl s_server") is False
 
 
 def test_find_server_pid_requires_exactly_one(monkeypatch):
@@ -113,6 +113,23 @@ def test_find_server_pid_requires_exactly_one(monkeypatch):
 
     monkeypatch.setattr(cpu, "_list_proc_pids", lambda *a, **k: [])
     assert cpu.find_server_pid("cid") is None
+
+
+def test_find_server_pid_d1_server(monkeypatch):
+    """Test that find_server_pid works for d1_server process."""
+    d1_cmdline = b"d1_server\x00"
+
+    def fake_list(container_name, timeout=10.0):
+        return [1, 2]
+
+    def fake_read(container_name, pid, timeout=10.0):
+        if pid == 1:
+            return d1_cmdline
+        return b"other\x00"
+
+    monkeypatch.setattr(cpu, "_list_proc_pids", fake_list)
+    monkeypatch.setattr(cpu, "_read_proc_cmdline", fake_read)
+    assert cpu.find_server_pid("cid", server_process_name="d1_server") == 1
 
 
 def test_stop_cpu_sampling_returns_none_without_samples(monkeypatch):

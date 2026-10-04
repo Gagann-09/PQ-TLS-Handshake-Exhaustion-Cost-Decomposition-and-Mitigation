@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import socket
 import ssl
+import subprocess
 import time
 from dataclasses import dataclass
 
 from src.controller.safety import SafetyError, validate_target
+from src.instrumentation import tls_log
 
 
 @dataclass(frozen=True)
@@ -22,15 +24,79 @@ class LegitimateStats:
     timeouts: int
 
 
+@dataclass(frozen=True)
+class HandshakeObservationResult:
+    """Result of one in-network full TLS handshake (observation only)."""
+
+    attempts: int
+    successes: int
+    transcript: str
+
+
+def run_in_network_handshake(
+    container: str,
+    host: str,
+    port: int,
+    groups: list[str] | None = None,
+    sigalgs: list[str] | None = None,
+    timeout: float = 10.0,
+) -> HandshakeObservationResult:
+    """Run ONE bounded full TLS 1.3 handshake inside the lab network.
+
+    Executes `openssl s_client` (OpenSSL 3.5.x) inside the given container,
+    which resolves the lab service name and supports ML-KEM-768 (C1). Success
+    is TLS handshake COMPLETION; no application payload is awaited. Returns the
+    observed OpenSSL `-msg`/`-state` transcript so callers can parse it
+    independently.
+    """
+    group_args = f" -groups {':'.join(groups)}" if groups else ""
+    sigalg_args = f" -sigalgs {':'.join(sigalgs)}" if sigalgs else ""
+    command = (
+        f"openssl s_client -connect {host}:{port} -tls1_3"
+        f"{group_args}{sigalg_args} -msg -state -servername {host}"
+        f" < /dev/null 2>&1"
+    )
+    transcript = ""
+    try:
+        proc = subprocess.run(
+            ["docker", "exec", container, "sh", "-c", command],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        transcript = (proc.stdout or "") + (proc.stderr or "")
+    except subprocess.TimeoutExpired as exc:
+        for stream in (exc.stdout, exc.stderr):
+            if stream:
+                transcript += (
+                    stream if isinstance(stream, str)
+                    else stream.decode(errors="replace")
+                )
+    except Exception as exc:  # pragma: no cover - defensive
+        transcript = f"in-network handshake failed: {exc}"
+
+    success = tls_log.d1_handshake_completed(transcript)
+    return HandshakeObservationResult(
+        attempts=1, successes=1 if success else 0, transcript=transcript
+    )
+
+
 def run_legitimate_client(
     host: str,
     port: int,
     rate_per_sec: float,
     duration_seconds: int,
+    container: str | None = None,
+    groups: list[str] | None = None,
+    sigalgs: list[str] | None = None,
 ) -> LegitimateStats:
     """Run the legitimate client at a fixed rate for the given duration.
 
-    Returns LegitimateStats. Fails closed if the target is not in the allowlist.
+    Success is defined as TLS handshake COMPLETION, never as receipt of
+    application payload. When `container` is provided the handshake runs
+    in-network via OpenSSL 3.5.x (C1 capable); otherwise a host Python (SSL)
+    fallback is used, which is NOT C1 capable. Fails closed if the target is
+    not in the allowlist.
     """
     validate_target(host)
 
@@ -44,20 +110,25 @@ def run_legitimate_client(
 
     while time.monotonic() - start < duration_seconds:
         attempts += 1
+        conn_start = time.monotonic()
         try:
-            context = ssl.create_default_context()
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-
-            conn_start = time.monotonic()
-            with socket.create_connection((host, port), timeout=5) as sock:
-                with context.wrap_socket(sock, server_hostname=host) as ssock:
-                    # Send a simple HTTP request to simulate legitimate traffic.
-                    ssock.sendall(b"GET / HTTP/1.1\r\nHost: tls-server\r\n\r\n")
-                    response = ssock.recv(1024)
-                    latency = (time.monotonic() - conn_start) * 1000
-                    latencies.append(latency)
+            if container:
+                obs = run_in_network_handshake(
+                    container, host, port, groups=groups, sigalgs=sigalgs
+                )
+                if obs.successes:
+                    latencies.append((time.monotonic() - conn_start) * 1000)
                     successes += 1
+            else:
+                context = ssl.create_default_context()
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                with socket.create_connection((host, port), timeout=5) as sock:
+                    with context.wrap_socket(sock, server_hostname=host):
+                        # Handshake completed when wrap_socket returns; do NOT
+                        # wait for application payload.
+                        latencies.append((time.monotonic() - conn_start) * 1000)
+                        successes += 1
         except socket.timeout:
             timeouts += 1
         except Exception:

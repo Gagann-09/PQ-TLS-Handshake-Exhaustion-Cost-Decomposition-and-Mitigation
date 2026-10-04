@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PQ-TLS Handshake Exhaustion: Cost Decomposition and Mitigation</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="container">
+      <h1>PQ-TLS Handshake Exhaustion</h1>
+      <p class="subtitle">Cost Decomposition and Mitigation</p>
+      <p class="tagline">An empirical measurement testbed for server-side CPU cost of TLS 1.3 handshakes across classical and post-quantum cipher suites under controlled handshake-exhaustion workloads.</p>
+      <div class="key-findings-preview">
+        <div class="finding"><strong>ML-DSA-65 auth</strong> ~2× CPU cost vs ECDSA-P256 (W0)</div>
+        <div class="finding"><strong>HRR without cookie</strong> for ML-KEM-768 (D1 measured limitation)</div>
+        <div class="finding"><strong>Source budget (5/sec)</strong> ~88% CPU reduction, 100% legitimate success</div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="container">
+      <ul>
+        <li><a href="#problem">Problem</a></li>
+        <li><a href="#configurations">Configurations</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#results">Results</a></li>
+        <li><a href="#d1">D1 Finding</a></li>
+        <li><a href="#defenses">Defenses</a></li>
+        <li><a href="#challenges">Challenges</a></li>
+        <li><a href="#reproducibility">Reproducibility</a></li>
+        <li><a href="#limitations">Limitations</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="container">
+    <!-- Problem Section -->
+    <section id="problem" class="section">
+      <h2>Research Problem</h2>
+      <p>Lee et al. (arXiv:2607.12504, 2026) demonstrated that switching a TLS 1.3 server from classical (ECDSA-P256 + X25519) to post-quantum (ML-KEM-768 + ML-DSA-65) greatly prolongs high-CPU duration under handshake-flood workloads. However, that work did not decompose <em>which</em> cryptographic component drives the incremental cost, nor did it evaluate any defense.</p>
+      <p>This project addresses five research questions:</p>
+      <div class="rq-grid">
+        <div class="rq-card">
+          <h4>RQ1: Component Cost</h4>
+          <p>How does normalized server CPU cost per attempted handshake change when ML-KEM and ML-DSA are introduced independently and jointly?</p>
+          <span class="status answered">Answered</span>
+        </div>
+        <div class="rq-card">
+          <h4>RQ2: Processing Stage</h4>
+          <p>Which handshake stage accounts for the largest incremental PQ-related server cost?</p>
+          <span class="status answered">Answered</span>
+        </div>
+        <div class="rq-card">
+          <h4>RQ3: Key Reuse</h4>
+          <p>Does reusing the client's ML-KEM keypair across attempts materially change server-side processing cost per attempt?</p>
+          <span class="status unresolved">Unresolved</span>
+        </div>
+        <div class="rq-card">
+          <h4>RQ4: Admission Control</h4>
+          <p>Does a stateless TLS 1.3 HelloRetryRequest cookie reduce expensive handshake processing under controlled PQ-TLS exhaustion?</p>
+          <span class="status partial">Measured Limitation</span>
+        </div>
+        <div class="rq-card">
+          <h4>RQ5: Availability Trade-off</h4>
+          <p>What is the cost, in legitimate-client success rate, latency, and added round trips, of each defense evaluated?</p>
+          <span class="status answered">Answered</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configurations Section -->
+    <section id="configurations" class="section">
+      <h2>C0–C4 Configurations</h2>
+      <p>All five configurations negotiated successfully on OpenSSL 3.5.5 default provider (no oqs-provider required).</p>
+      <div class="figure-container">
+        <img src="assets/diagrams/config_matrix.svg" alt="Configuration Matrix C0–C4" class="diagram">
+      </div>
+      <div class="workload-defense">
+        <div class="card">
+          <h3>Workload Modes</h3>
+          <ul>
+            <li><strong>W0 — normal_completion:</strong> Full TLS 1.3 handshake to completion</li>
+            <li><strong>W1 — controlled_abort:</strong> Client sends ClientHello, disconnects pre-Finished</li>
+          </ul>
+          <p class="note">Hard limits (code-enforced): 1000 attempts, 30 seconds, concurrency 1</p>
+        </div>
+        <div class="card">
+          <h3>Defense Modes (evaluated on C1×W1)</h3>
+          <ul>
+            <li><strong>D0:</strong> Baseline (no admission control)</li>
+            <li><strong>D1:</strong> HRR via <code>openssl s_server -stateless</code> (cookie_observed=false)</li>
+            <li><strong>D2:</strong> Source admission budget (userspace proxy, token bucket 5 tokens @ 5/sec)</li>
+            <li><strong>D3:</strong> Combined (D2 proxy → D1 stateless server)</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture" class="section">
+      <h2>Experimental Architecture</h2>
+      <div class="figure-container">
+        <img src="assets/diagrams/architecture.svg" alt="Experimental Architecture" class="diagram">
+      </div>
+      <h3>Measurement Triangle</h3>
+      <p>Three independent evidence streams — no stream proxies another:</p>
+      <div class="figure-container">
+        <img src="assets/diagrams/measurement_triangle.svg" alt="Measurement Triangle" class="diagram">
+      </div>
+    </section>
+
+    <!-- Results Section -->
+    <section id="results" class="section">
+      <h2>Results: CPU Cost Decomposition (Phase 5)</h2>
+      <p>Phase 5: C0–C4 × W0/W1 × 3 trials = 30 trials + 2 pilots. All trials valid (measurement_status: measured/measured/observed).</p>
+      
+      <h3>Figure A: CPU-seconds per Attempt by Configuration</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureA"></canvas>
+      </div>
+
+      <h3>Figure B: Incremental Cost Relative to C0</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureB"></canvas>
+      </div>
+
+      <h3>Figure C: Key-Establishment vs Authentication (C1 vs C2 vs C4)</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureC"></canvas>
+      </div>
+
+      <h3>Key Findings</h3>
+      <div class="findings-grid">
+        <div class="finding-card">
+          <h4>W0 (Completed Handshakes)</h4>
+          <ul>
+            <li><strong>ML-DSA-65 authentication (C2, C4)</strong> dominates: ~2× C0 cost</li>
+            <li><strong>ML-KEM-768 alone (C1)</strong> comparable to classical: 0.95× C0</li>
+            <li><strong>Hybrid (C3)</strong> modest overhead: 1.06× C0</li>
+          </ul>
+        </div>
+        <div class="finding-card">
+          <h4>W1 (Controlled Abort, Pre-Finished)</h4>
+          <ul>
+            <li><strong>C2 and C3 show <em>lower</em> pre-completion cost than C0</strong> (server aborts before signature verification)</li>
+            <li><strong>C4 remains high</strong> (ML-KEM encapsulation + ML-DSA verification both occur pre-Finished)</li>
+            <li><strong>C1 (ML-KEM)</strong> higher than C0 in W1: 1.27× C0</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>Figure D: Key Reuse Experiment (Phase 6, C1×W1)</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureD"></canvas>
+      </div>
+      <div class="alert warning">
+        <strong>Critical:</strong> The Phase 6 client falls back to fresh keypair per attempt in both conditions (<code>src/workload/client.py</code>). True ML-KEM keypair reuse requires a custom OpenSSL C API client. The null result (ratio 0.981, Δ = −0.000030 s/att) reflects fresh keypairs in both conditions. <strong>RQ3 remains unresolved for true keypair reuse.</strong>
+      </div>
+    </section>
+
+    <!-- D1 Finding Section -->
+    <section id="d1" class="section">
+      <h2>D1 Finding: HRR Without Cookie for ML-KEM-768</h2>
+      <div class="alert critical">
+        <strong>Measured Limitation (D7-010, D7-011):</strong> The tested OpenSSL 3.5.x <code>s_server -stateless</code> path produces HelloRetryRequest for ML-KEM-768 <strong>without the stateless cookie extension (RFC 8446 §4.2.2, type 44)</strong>. <code>cookie_observed = false</code> is a measured outcome, not missing data.
+      </div>
+      <div class="figure-container">
+        <img src="assets/diagrams/d1_hrr_sequence.svg" alt="D1 HRR Sequence" class="diagram">
+      </div>
+      <h3>Observed Sequence</h3>
+      <ol class="sequence">
+        <li><strong>ClientHello</strong> — supported_groups: X25519, MLKEM768; key_share: X25519</li>
+        <li><strong>HelloRetryRequest</strong> — RFC 8446 special random observed; requests key_share: MLKEM768; <strong>cookie extension: ABSENT</strong></li>
+        <li><strong>ClientHello2</strong> — key_share: MLKEM768; <strong>cookie extension: ABSENT</strong></li>
+        <li><strong>ServerHello</strong> — negotiated group: MLKEM768 → completed</li>
+      </ol>
+      <p><strong>Implication:</strong> D1 in this testbed reduces to HRR-induced 1-RTT delay without the stateless cookie's DoS-reduction property. Server still processes ClientHello2 → encapsulation. The custom <code>SSL_stateless()</code> C server was abandoned (D7-010) due to <code>SSL_R_INTERNAL_ERROR</code> in <code>tls_construct_stoc_cookie</code> for ML-KEM-768.</p>
+    </section>
+
+    <!-- Defenses Section -->
+    <section id="defenses" class="section">
+      <h2>Defense Evaluation (Phase 7, C1×W1×D0–D3×3 trials = 12 campaign trials)</h2>
+      <p>Historical pilots preserved (D1-pilot with 50 attempts). All 12 campaign trials valid.</p>
+      
+      <div class="figure-container">
+        <img src="assets/diagrams/defense_layer.svg" alt="Defense Layer Architecture" class="diagram">
+      </div>
+
+      <h3>Figure E: Defense Effectiveness — CPU Reduction</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureE"></canvas>
+      </div>
+
+      <h3>Figure F: Legitimate-Client Trade-off</h3>
+      <div class="chart-container">
+        <canvas id="chartFigureF"></canvas>
+      </div>
+
+      <div class="defense-table-container">
+        <table class="defense-table">
+          <thead>
+            <tr>
+              <th>Defense</th>
+              <th>Mechanism</th>
+              <th>CPU/attempt (ms)</th>
+              <th>Reduction vs D0</th>
+              <th>Legitimate Success</th>
+              <th>Legitimate p50 Latency</th>
+              <th>Key Observation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>D0</td>
+              <td>Baseline</td>
+              <td>1.49</td>
+              <td>—</td>
+              <td>96% (25/26)</td>
+              <td>186 ms</td>
+              <td>No admission control</td>
+            </tr>
+            <tr>
+              <td>D1</td>
+              <td>HRR (no cookie)</td>
+              <td>1.54</td>
+              <td>+3%</td>
+              <td>100% (26/26)</td>
+              <td>189 ms</td>
+              <td>HRR observed, cookie_observed=false; no CPU reduction</td>
+            </tr>
+            <tr class="highlight">
+              <td>D2</td>
+              <td>Source Budget (5/sec)</td>
+              <td><strong>0.18</strong></td>
+              <td><strong>−88%</strong></td>
+              <td>100% (25/25)</td>
+              <td>194 ms</td>
+              <td>~87% workload rejected at proxy; only ~13% reach TLS server</td>
+            </tr>
+            <tr>
+              <td>D3</td>
+              <td>D2 + D1</td>
+              <td>0.19</td>
+              <td>−87%</td>
+              <td>100% (24/24)</td>
+              <td>193 ms</td>
+              <td>No additional benefit over D2 alone</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Challenges Section -->
+    <section id="challenges" class="section">
+      <h2>Engineering Journey: Challenges & Resolutions</h2>
+      <p>Documented from project history (memory.md P1-001 through D7-011). Each follows: Problem → Investigation → Resolution → Final Status.</p>
+      <div class="figure-container">
+        <img src="assets/diagrams/challenges.svg" alt="Challenges Timeline" class="diagram">
+      </div>
+    </section>
+
+    <!-- Reproducibility Section -->
+    <section id="reproducibility" class="section">
+      <h2>Reproducibility</h2>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Environment</h3>
+          <ul>
+            <li>OpenSSL 3.5.5+ (default provider)</li>
+            <li>Docker 29.x + Compose v5.x</li>
+            <li>Python 3.11+ (orchestration)</li>
+            <li>Alpine 3.22 (containers)</li>
+            <li>Linux kernel with pidstat (sysstat), tcpdump</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Run Experiments</h3>
+          <pre><code># Setup
+./scripts/setup.sh
+
+# Phase 5: Component decomposition
+python scripts/run_phase5.py
+
+# Phase 6: Key reuse
+python scripts/run_phase6.py
+
+# Phase 7: Defense evaluation
+python scripts/run_phase7.py
+python scripts/run_phase7_analysis.py</code></pre>
+        </div>
+        <div class="card">
+          <h3>Test Suite</h3>
+          <pre><code>python -m pytest tests/ -v
+# 129 collected
+# 122 passed, 7 skipped, 0 failed, 0 errors</code></pre>
+          <p class="note">7 skipped = integration tests requiring live containers (not coverage gaps)</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Limitations Section -->
+    <section id="limitations" class="section">
+      <h2>Limitations</h2>
+      <ul class="limitations-list">
+        <li><strong>Single-source IP:</strong> All traffic from one client IP; no distributed attack simulation</li>
+        <li><strong>Localhost/Docker environment:</strong> No real network path, no NAT, no middleboxes</li>
+        <li><strong>Bounded attempts/time:</strong> 1000 attempts / 30 sec / concurrency 1 — not sustained flood</li>
+        <li><strong>No application payload:</strong> Handshake-only; no record-layer processing measured</li>
+        <li><strong>No real Internet traffic:</strong> Synthetic workload only</li>
+        <li><strong>RTT unavailable for main campaign:</strong> Packet-capture RTT parsing implemented for Phase 7 validation only; main campaign reports wall-clock latency only</li>
+        <li><strong>D1 cookie absent:</strong> OpenSSL 3.5.x does not emit stateless cookie for ML-KEM-768; D1 ≠ RFC 8446 cookie defense</li>
+        <li><strong>Phase 6 keypair reuse not actually tested:</strong> Client falls back to fresh keypair per attempt</li>
+        <li><strong>Docker Desktop networking:</strong> Bridge network on Windows/macOS host adds variability</li>
+        <li><strong>Single OpenSSL version:</strong> Results specific to 3.5.x default provider; other providers/versions may differ</li>
+      </ul>
+    </section>
+
+    <!-- Safety Section -->
+    <section id="safety" class="section">
+      <h2>Safety Boundary</h2>
+      <p>All experiments are strictly bounded and localhost-only:</p>
+      <ul>
+        <li><strong>Target allowlist:</strong> <code>localhost</code>, <code>127.0.0.1</code>, <code>::1</code>, Docker service names (resolvable only inside lab network)</li>
+        <li><strong>Hard ceilings (code-enforced):</strong> 1000 attempts, 30 seconds, concurrency 1</li>
+        <li><strong>No unbounded mode, no IP spoofing, no public-target discovery, no reflection/amplification</strong></li>
+        <li><strong>Mandatory preflight test</strong> (<code>tests/test_preflight.py</code>) must pass before any run</li>
+        <li><strong>No custom cryptography:</strong> OpenSSL 3.5+ exclusively</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>PQ-TLS Handshake Exhaustion: Cost Decomposition and Mitigation</p>
+      <p class="small">Experimental testbed and analysis code — not an attack tool</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

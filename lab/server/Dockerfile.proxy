@@ -1,0 +1,16 @@
+# Admission Proxy Image
+# Runs the Python asyncio admission proxy
+
+FROM alpine:3.22
+
+# Install Python
+RUN apk add --no-cache python3
+
+# Copy proxy code
+COPY src/defense/admission_proxy.py /usr/local/bin/admission_proxy.py
+
+# Expose proxy port
+EXPOSE 4433
+
+# Run proxy
+ENTRYPOINT ["python3", "/usr/local/bin/admission_proxy.py"]

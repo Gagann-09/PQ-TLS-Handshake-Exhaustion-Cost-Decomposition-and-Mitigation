@@ -1,0 +1,28 @@
+# C1 × W1 × D1 — Stateless Cookie (HelloRetryRequest)
+# ML-KEM-768 + ECDSA-P256, Controlled Abort, D1 Defense
+# Pilot: reduced bounds for quick validation
+
+experiment_id: c1_w1_d1_r01
+server:
+  configuration: C1
+  defense: D1
+workload:
+  mode: controlled_abort
+  key_reuse: fresh_keypair
+  max_attempts: 50
+  max_duration_seconds: 10
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: tls-server
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 3
+  seed: 42
+validation:
+  handshakes: 3
+  timeout_seconds: 10

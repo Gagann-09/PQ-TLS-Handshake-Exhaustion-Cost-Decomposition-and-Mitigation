@@ -1,18 +1,32 @@
 # C2 PQ Authentication — X25519 + ML-DSA-65
 # Isolates PQ authentication cost (RQ1).
 # Reuses the Phase 1 lab network with C2-pinned TLS server.
+# Includes workload client container with OpenSSL 3.5+.
 # Note: Requires ML-DSA-65 server certificate (see generate_certs_c2.sh).
 
 services:
   tls-server:
-    image: alpine:3.19
-    command: sh -c "apk add --no-cache openssl && openssl s_server -accept 4433 -cert /certs/server_mldsa65.crt -key /certs/server_mldsa65.key -www -tls1_3 -groups X25519 -sigalgs mldsa65 -naccept 1000"
+    image: alpine:3.22
+    command: sh -c "apk add --no-cache openssl tcpdump && openssl s_server -accept 4433 -cert /certs/server_mldsa65.crt -key /certs/server_mldsa65.key -www -tls1_3 -groups X25519 -sigalgs mldsa65 -naccept 1000"
     ports:
       - "4433:4433"
     volumes:
       - ../certs:/certs:ro
     networks:
       - lab-network
+    restart: unless-stopped
+
+  workload-client:
+    image: alpine:3.22
+    command: sh -c "apk add --no-cache python3 openssl && tail -f /dev/null"
+    volumes:
+      - ../certs:/certs:ro
+      - ../../src:/src:ro
+      - ../../scripts:/scripts:ro
+    networks:
+      - lab-network
+    depends_on:
+      - tls-server
     restart: unless-stopped
 
 networks:

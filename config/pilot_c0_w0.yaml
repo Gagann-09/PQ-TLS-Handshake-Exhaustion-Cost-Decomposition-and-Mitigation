@@ -1,0 +1,23 @@
+# PILOT (Phase 5 pilot, 2026-10-02) — C0 × W0, short bounded normal_completion run.
+# Bounds lowered from the 1000-attempt / 30 s ceiling per the pilot instruction.
+experiment_id: 2026-10-02-C0-W0-R10
+server:
+  configuration: C0
+  defense: D0
+workload:
+  mode: normal_completion
+  key_reuse: fresh_keypair
+  max_attempts: 50
+  max_duration_seconds: 10
+  max_concurrency: 1
+legitimate_client:
+  rate_per_sec: 1.0
+target:
+  host: 127.0.0.1
+  port: 4433
+network:
+  latency_ms: 0
+  loss_percent: 0
+trial:
+  repeats: 1
+  seed: 42

@@ -1,0 +1,55 @@
+{
+  "figure_a": {
+    "normal_completion": {
+      "C0": {"mean": 0.001514, "median": 0.001515, "std": 0.000081, "p95": 0.001539, "n": 4},
+      "C1": {"mean": 0.001436, "median": 0.001429, "std": 0.000033, "p95": 0.001429, "n": 3},
+      "C2": {"mean": 0.002906, "median": 0.002970, "std": 0.000119, "p95": 0.002970, "n": 3},
+      "C3": {"mean": 0.001610, "median": 0.001590, "std": 0.000059, "p95": 0.001590, "n": 3},
+      "C4": {"mean": 0.002943, "median": 0.002930, "std": 0.000034, "p95": 0.002930, "n": 3}
+    },
+    "controlled_abort": {
+      "C0": {"mean": 0.001206, "median": 0.001198, "std": 0.000017, "p95": 0.001200, "n": 4},
+      "C1": {"mean": 0.001535, "median": 0.001540, "std": 0.000028, "p95": 0.001550, "n": 6},
+      "C2": {"mean": 0.000729, "median": 0.000729, "std": 0.000015, "p95": 0.000729, "n": 3},
+      "C3": {"mean": 0.000665, "median": 0.000668, "std": 0.000007, "p95": 0.000668, "n": 3},
+      "C4": {"mean": 0.002823, "median": 0.002810, "std": 0.000049, "p95": 0.002810, "n": 3}
+    }
+  },
+  "figure_b": {
+    "normal_completion": {
+      "C0": {"delta_vs_C0": 0.0, "ratio_vs_C0": 1.0},
+      "C1": {"delta_vs_C0": -0.000078, "ratio_vs_C0": 0.9485},
+      "C2": {"delta_vs_C0": 0.001392, "ratio_vs_C0": 1.9194},
+      "C3": {"delta_vs_C0": 0.000096, "ratio_vs_C0": 1.0634},
+      "C4": {"delta_vs_C0": 0.001429, "ratio_vs_C0": 1.9439}
+    },
+    "controlled_abort": {
+      "C0": {"delta_vs_C0": 0.0, "ratio_vs_C0": 1.0},
+      "C1": {"delta_vs_C0": 0.000329, "ratio_vs_C0": 1.2728},
+      "C2": {"delta_vs_C0": -0.000477, "ratio_vs_C0": 0.6045},
+      "C3": {"delta_vs_C0": -0.000541, "ratio_vs_C0": 0.5514},
+      "C4": {"delta_vs_C0": 0.001617, "ratio_vs_C0": 2.3408}
+    }
+  },
+  "figure_c": {
+    "normal_completion": {
+      "C0": {"mean": 0.001514},
+      "C1": {"mean": 0.001436},
+      "C2": {"mean": 0.002906},
+      "C4": {"mean": 0.002943}
+    },
+    "controlled_abort": {
+      "C0": {"mean": 0.001206},
+      "C1": {"mean": 0.001535},
+      "C2": {"mean": 0.000729},
+      "C4": {"mean": 0.002823}
+    }
+  },
+  "figure_d": {
+    "fresh_keypair": {"mean": 0.001550, "median": 0.001550, "std": 0.000016, "n": 3},
+    "reused_client_keypair": {"mean": 0.001520, "median": 0.001530, "std": 0.000029, "n": 3},
+    "paired_delta_reused_minus_fresh": {"mean": -0.000030, "median": -0.000020},
+    "paired_ratio_reused_over_fresh": {"mean": 0.9811, "median": 0.9871},
+    "note": "Phase 6 client falls back to fresh keypair per attempt; true ML-KEM keypair reuse not implemented. RQ3 remains unresolved."
+  }
+}
