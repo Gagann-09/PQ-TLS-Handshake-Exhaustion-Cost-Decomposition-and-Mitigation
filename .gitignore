@@ -1,6 +1,59 @@
-# =============================================================================
-# INTERNAL SPECIFICATION DOCUMENTS (never committed)
-# =============================================================================
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+build/
+*.egg-info/
+*.so
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Testing
+.pytest_cache/
+coverage/
+
+# Environment / secrets
+*.key
+*.crt
+*.pem
+*.srl
+lab/certs/
+.env
+.env.*
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Generated research artifacts
+results/raw/
+results/processed/
+results/figures/
+*.pcap
+*.pcapng
+*.keylog
+perf.data*
+*.pidstat
+*.tmp
+*.log
+phase*_campaign.log
+cleanup_help/
+landing-page/
+remove_arch.js
+
+# Internal Specification Documents
 PRD.md
 architecture.md
 design.md
@@ -9,75 +62,18 @@ memory.md
 tasks.md
 PHASE7_CAMPAIGN_REPORT.md
 
-# =============================================================================
-# SECRETS AND CERTIFICATES
-# =============================================================================
-*.key
-*.crt
-*.pem
-*.srl
-lab/certs/
-
-# =============================================================================
-# PYTHON
-# =============================================================================
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-
-# =============================================================================
-# VIRTUAL ENVIRONMENTS
-# =============================================================================
-.venv/
-venv/
-env/
-
-# =============================================================================
-# IDE / EDITOR
-# =============================================================================
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# =============================================================================
-# OS
-# =============================================================================
-.DS_Store
-Thumbs.db
-
-# =============================================================================
-# EXPERIMENTAL RESULTS (raw data never committed)
-# =============================================================================
-results/raw/
-results/processed/
-results/figures/
-
-# =============================================================================
-# INSTRUMENTATION ARTIFACTS
-# =============================================================================
-*.pcap
-*.pcapng
-*.keylog
-perf.data*
-*.pidstat
-
-# =============================================================================
-# TEMPORARY / LOG FILES
-# =============================================================================
-*.tmp
-*.log
-phase*_campaign.log
-
-# =============================================================================
-# ABANDONED IMPLEMENTATIONS (per D7-010)
-# =============================================================================
+# Abandoned Implementations
 lab/server/d1_server.c
 lab/server/Dockerfile.d1
 lab/server/Dockerfile.d1-355
 lab/server/Dockerfile.d1-355-x25519
+
+# LaTeX auxiliary files
+*.aux
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
